@@ -1,8 +1,30 @@
 """
-CardioCare-AIOps — FastAPI Gateway
-Provides REST API for vitals data, anomaly history, and system status.
-Secured with Keycloak JWT + OPA policy enforcement.
-Instrumented with OpenTelemetry → Jaeger for distributed tracing.
+CardioCare-AIOps — FastAPI API Gateway
+Author  : Muhammad Raees (raees.malik89@gmail.com)
+Course  : Diploma in Artificial Intelligence Operations — EduQual Level 6 (DAIOL6)
+Topic   : Topic 7 — Serverless Architectures with Event-Driven AIOps,
+          Observability and Security Integration
+
+Purpose:
+    Provides the REST API layer for the CardioCare-AIOps platform, enabling
+    external clients (clinical dashboards, mobile apps, EHR systems) to query
+    patient vitals, detected anomalies, and critical alerts.
+
+Security layers (multi-tier, defence-in-depth):
+    1. Keycloak JWT bearer token — authenticates the calling user.
+    2. OPA policy check        — authorises the specific resource+action pair.
+    This two-layer approach satisfies ISO 27001 A.9.4 and NIST CSF PR.AC-4.
+
+Observability:
+    Every request is traced with OpenTelemetry and exported to Jaeger.
+    The /metrics endpoint exposes Prometheus counters and histograms so
+    Grafana can visualise API throughput and latency alongside cardiac data.
+
+Design note — why FastAPI over Flask:
+    FastAPI provides native async support (important for non-blocking Keycloak
+    and OPA calls), automatic OpenAPI documentation, and built-in Pydantic
+    validation.  For a real-time clinical system these properties reduce the
+    risk of blocking the event loop under burst load.
 """
 
 import os

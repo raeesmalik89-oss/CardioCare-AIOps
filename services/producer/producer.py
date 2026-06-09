@@ -1,7 +1,21 @@
 """
-CardioCare-AIOps — Cardiac Vitals Producer
-Streams simulated real-time ECG and vitals data to Kafka topic: cardiac.vitals.stream
-Periodically injects anomalous readings to trigger the AIOps detection pipeline.
+CardioCare-AIOps — Cardiac Vitals Stream Producer
+Author  : Muhammad Raees (raees.malik89@gmail.com)
+Course  : Diploma in Artificial Intelligence Operations — EduQual Level 6 (DAIOL6)
+Topic   : Topic 7 — Serverless Architectures with Event-Driven AIOps,
+          Observability and Security Integration
+
+Purpose:
+    Generates a continuous stream of simulated patient vitals and ECG samples,
+    publishing each event to the Kafka topic `cardiac.vitals.stream`.
+    ~5% of events are deliberately anomalous (tachycardia, hypoxemia, hypertensive
+    crisis) to exercise the downstream AIOps anomaly-detection engine.
+
+Design rationale:
+    Using a dedicated producer service decouples data ingestion from processing,
+    which is a core principle of event-driven serverless architectures.  In a
+    production deployment this service would be replaced by real IoT device
+    connectors (HL7 FHIR, MQTT bridge) — the downstream pipeline is identical.
 """
 
 import os

@@ -1,8 +1,29 @@
 """
 CardioCare-AIOps — Serverless Alert Handler Function
-Event-driven function triggered by cardiac.alerts.critical Kafka topic.
-Demonstrates serverless / FaaS pattern: stateless, single-purpose, auto-scaling.
-Exposes HTTP endpoint so OpenFaaS / any invoker can trigger it via HTTP POST too.
+Author  : Muhammad Raees (raees.malik89@gmail.com)
+Course  : Diploma in Artificial Intelligence Operations — EduQual Level 6 (DAIOL6)
+Topic   : Topic 7 — Serverless Architectures with Event-Driven AIOps,
+          Observability and Security Integration
+
+Purpose:
+    Implements the serverless / Function-as-a-Service (FaaS) tier of the
+    CardioCare-AIOps pipeline.  This service subscribes to the
+    `cardiac.alerts.critical` Kafka topic and executes `handle_alert()` for
+    every CRITICAL cardiac event.  It also exposes an OpenFaaS-compatible
+    HTTP endpoint so the same logic can be invoked synchronously by any
+    orchestrator (OpenFaaS, Knative, AWS Lambda proxy, etc.).
+
+Serverless design properties demonstrated:
+    - Stateless  : no in-process state between invocations; history is an
+                   append-only in-memory log (would be a DB write in production).
+    - Single-purpose : does exactly one thing — process a cardiac alert.
+    - Event-triggered: woken by a Kafka message, not a polling loop.
+    - Observable : every invocation is counted and timed via Prometheus metrics.
+
+ISO 27001 reference:
+    A.16.1.5 — Response to information security incidents.
+    The alert log and escalation path (CODE_BLUE / nurse notification) mirror
+    the incident response procedure required by this control.
 """
 
 import os

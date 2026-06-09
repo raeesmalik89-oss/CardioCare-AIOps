@@ -1,8 +1,31 @@
 """
 CardioCare-AIOps — AIOps Anomaly Detection Engine
-Consumes cardiac.vitals.stream, runs Isolation Forest anomaly detection,
-publishes results to cardiac.anomalies.detected and cardiac.alerts.critical.
-Exposes Prometheus metrics and retrains the model periodically.
+Author  : Muhammad Raees (raees.malik89@gmail.com)
+Course  : Diploma in Artificial Intelligence Operations — EduQual Level 6 (DAIOL6)
+Topic   : Topic 7 — Serverless Architectures with Event-Driven AIOps,
+          Observability and Security Integration
+
+Purpose:
+    Consumes the `cardiac.vitals.stream` Kafka topic in real time, extracts a
+    seven-dimensional feature vector from each event, and scores it with an
+    Isolation Forest model.  Events whose anomaly score falls below the
+    configurable threshold are classified by clinical severity and forwarded
+    to `cardiac.anomalies.detected`; CRITICAL events additionally trigger the
+    serverless alert function via `cardiac.alerts.critical`.
+
+Algorithm choice — why Isolation Forest:
+    Cardiac monitoring data is predominantly normal (low contamination ~5%).
+    Isolation Forest excels in this regime because it isolates anomalies rather
+    than profiling the entire distribution.  It operates without labelled
+    anomaly examples, which suits real clinical deployments where labelled
+    cardiac-emergency datasets are scarce.  The model retrains automatically
+    every MODEL_RETRAIN_INTERVAL seconds on the sliding observation buffer,
+    adapting to patient-specific baseline drift.
+
+AIOps integration:
+    The engine closes the AIOps loop: it not only *detects* anomalies but
+    *automates the response* by publishing to downstream topics, embodying the
+    event-driven serverless pattern required by Topic 7.
 """
 
 import os
