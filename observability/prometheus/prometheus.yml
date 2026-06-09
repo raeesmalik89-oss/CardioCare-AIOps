@@ -1,0 +1,33 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    monitor: cardiocare-aiops
+    project: CardioCare-AIOps
+
+alerting:
+  alertmanagers: []
+
+rule_files: []
+
+scrape_configs:
+  - job_name: prometheus
+    static_configs:
+      - targets: [localhost:9090]
+
+  - job_name: cardiocare-api
+    static_configs:
+      - targets: [api:8000]
+    metrics_path: /metrics
+
+  - job_name: cardiocare-aiops-engine
+    static_configs:
+      - targets: [aiops-engine:8001]
+
+  - job_name: cardiocare-alert-function
+    static_configs:
+      - targets: [alert-function:8002]
+
+  - job_name: kafka
+    static_configs:
+      - targets: [kafka:9092]

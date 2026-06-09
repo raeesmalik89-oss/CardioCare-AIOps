@@ -1,0 +1,12 @@
+.env
+__pycache__/
+*.pyc
+*.pyo
+.DS_Store
+node_modules/
+*.log
+kafka-data/
+prometheus-data/
+grafana-data/
+loki-data/
+keycloak-data/

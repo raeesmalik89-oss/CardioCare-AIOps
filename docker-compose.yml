@@ -1,0 +1,238 @@
+version: "3.9"
+
+networks:
+  cardiocare-net:
+    driver: bridge
+
+volumes:
+  kafka-data:
+  prometheus-data:
+  grafana-data:
+  loki-data:
+  keycloak-data:
+
+services:
+
+  # ─── Event Streaming: Apache Kafka ───────────────────────────────────────────
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.4.0
+    container_name: zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    networks: [cardiocare-net]
+    restart: unless-stopped
+
+  kafka:
+    image: confluentinc/cp-kafka:7.4.0
+    container_name: kafka
+    depends_on: [zookeeper]
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://${EC2_PUBLIC_IP:-localhost}:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+    volumes:
+      - kafka-data:/var/lib/kafka/data
+    networks: [cardiocare-net]
+    restart: unless-stopped
+
+  kafka-init:
+    image: confluentinc/cp-kafka:7.4.0
+    container_name: kafka-init
+    depends_on: [kafka]
+    entrypoint: ["/bin/sh", "-c"]
+    command: |
+      "
+      echo 'Waiting for Kafka...'
+      sleep 15
+      kafka-topics --create --if-not-exists --bootstrap-server kafka:29092 --replication-factor 1 --partitions 3 --topic cardiac.vitals.stream
+      kafka-topics --create --if-not-exists --bootstrap-server kafka:29092 --replication-factor 1 --partitions 3 --topic cardiac.anomalies.detected
+      kafka-topics --create --if-not-exists --bootstrap-server kafka:29092 --replication-factor 1 --partitions 1 --topic cardiac.alerts.critical
+      echo 'Kafka topics created.'
+      kafka-topics --list --bootstrap-server kafka:29092
+      "
+    networks: [cardiocare-net]
+
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    container_name: kafka-ui
+    depends_on: [kafka]
+    ports:
+      - "8085:8080"
+    environment:
+      KAFKA_CLUSTERS_0_NAME: cardiocare-cluster
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092
+    networks: [cardiocare-net]
+    restart: unless-stopped
+
+  # ─── Data Producer: Simulated Cardiac Vitals ─────────────────────────────────
+  producer:
+    build: ./services/producer
+    container_name: cardiocare-producer
+    depends_on: [kafka-init]
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      KAFKA_TOPIC: cardiac.vitals.stream
+      EMIT_INTERVAL_MS: ${EMIT_INTERVAL_MS:-1000}
+      SIMULATE_ANOMALIES: ${SIMULATE_ANOMALIES:-true}
+    networks: [cardiocare-net]
+    restart: unless-stopped
+
+  # ─── AIOps Engine: Anomaly Detection ─────────────────────────────────────────
+  aiops-engine:
+    build: ./services/aiops-engine
+    container_name: cardiocare-aiops-engine
+    depends_on: [kafka-init, prometheus]
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      INPUT_TOPIC: cardiac.vitals.stream
+      ANOMALY_TOPIC: cardiac.anomalies.detected
+      ALERT_TOPIC: cardiac.alerts.critical
+      PROMETHEUS_PORT: 8001
+      ANOMALY_THRESHOLD: ${ANOMALY_THRESHOLD:--0.1}
+      MODEL_RETRAIN_INTERVAL: ${MODEL_RETRAIN_INTERVAL:-300}
+    ports:
+      - "8001:8001"
+    networks: [cardiocare-net]
+    restart: unless-stopped
+
+  # ─── Alert Function (Serverless / OpenFaaS-style) ────────────────────────────
+  alert-function:
+    build: ./services/alert-function
+    container_name: cardiocare-alert-fn
+    depends_on: [kafka-init]
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      ALERT_TOPIC: cardiac.alerts.critical
+      WEBHOOK_URL: ${ALERT_WEBHOOK_URL:-}
+      PROMETHEUS_PORT: 8002
+    ports:
+      - "8002:8002"
+    networks: [cardiocare-net]
+    restart: unless-stopped
+
+  # ─── API Gateway: FastAPI ─────────────────────────────────────────────────────
+  api:
+    build: ./services/api
+    container_name: cardiocare-api
+    depends_on: [kafka, aiops-engine]
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      KEYCLOAK_URL: http://keycloak:8080
+      KEYCLOAK_REALM: cardiocare
+      KEYCLOAK_CLIENT_ID: cardiocare-api
+      OPA_URL: http://opa:8181
+      PROMETHEUS_PORT: 8000
+    ports:
+      - "8000:8000"
+    networks: [cardiocare-net]
+    restart: unless-stopped
+
+  # ─── Security: Keycloak (Identity & Access) ───────────────────────────────────
+  keycloak:
+    image: quay.io/keycloak/keycloak:22.0
+    container_name: cardiocare-keycloak
+    command: start-dev --import-realm
+    environment:
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-CardioCare@2024}
+      KC_DB: dev-mem
+    volumes:
+      - ./security/keycloak:/opt/keycloak/data/import
+    ports:
+      - "8080:8080"
+    networks: [cardiocare-net]
+    restart: unless-stopped
+
+  # ─── Security: Open Policy Agent ─────────────────────────────────────────────
+  opa:
+    image: openpolicyagent/opa:0.58.0
+    container_name: cardiocare-opa
+    command: run --server --addr=0.0.0.0:8181 /policies
+    volumes:
+      - ./security/opa:/policies
+    ports:
+      - "8181:8181"
+    networks: [cardiocare-net]
+    restart: unless-stopped
+
+  # ─── Observability: Prometheus ────────────────────────────────────────────────
+  prometheus:
+    image: prom/prometheus:v2.47.0
+    container_name: cardiocare-prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--web.enable-lifecycle"
+      - "--storage.tsdb.retention.time=7d"
+    volumes:
+      - ./observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    ports:
+      - "9090:9090"
+    networks: [cardiocare-net]
+    restart: unless-stopped
+
+  # ─── Observability: Grafana ───────────────────────────────────────────────────
+  grafana:
+    image: grafana/grafana:10.1.0
+    container_name: cardiocare-grafana
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-CardioCare@2024}
+      GF_SECURITY_ADMIN_USER: admin
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_SERVER_ROOT_URL: http://${EC2_PUBLIC_IP:-localhost}:3000
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports:
+      - "3000:3000"
+    depends_on: [prometheus, loki]
+    networks: [cardiocare-net]
+    restart: unless-stopped
+
+  # ─── Observability: Loki (Log Aggregation) ────────────────────────────────────
+  loki:
+    image: grafana/loki:2.9.0
+    container_name: cardiocare-loki
+    command: -config.file=/etc/loki/loki-config.yml
+    volumes:
+      - ./observability/loki/loki-config.yml:/etc/loki/loki-config.yml:ro
+      - loki-data:/loki
+    ports:
+      - "3100:3100"
+    networks: [cardiocare-net]
+    restart: unless-stopped
+
+  # ─── Observability: Promtail (Log Shipper) ────────────────────────────────────
+  promtail:
+    image: grafana/promtail:2.9.0
+    container_name: cardiocare-promtail
+    command: -config.file=/etc/promtail/promtail-config.yml
+    volumes:
+      - /var/log:/var/log:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./observability/promtail/promtail-config.yml:/etc/promtail/promtail-config.yml:ro
+    depends_on: [loki]
+    networks: [cardiocare-net]
+    restart: unless-stopped
+
+  # ─── Observability: Jaeger (Distributed Tracing) ─────────────────────────────
+  jaeger:
+    image: jaegertracing/all-in-one:1.49
+    container_name: cardiocare-jaeger
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+    ports:
+      - "16686:16686"
+      - "4317:4317"
+      - "4318:4318"
+    networks: [cardiocare-net]
+    restart: unless-stopped
