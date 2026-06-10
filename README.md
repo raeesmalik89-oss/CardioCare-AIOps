@@ -1,85 +1,67 @@
-# CardioCare-AIOps 🫀
 
-> AI-Powered Cardiac Monitoring Platform — Real-time ECG analysis with serverless AIOps, full observability, and enterprise security.
+# CardioCare-AIOps
 
-[![CI/CD](https://github.com/raeesmalik89-oss/CardioCare-AIOps/actions/workflows/ci.yml/badge.svg)](https://github.com/raeesmalik89-oss/CardioCare-AIOps/actions)
-[![Docker Hub](https://img.shields.io/badge/Docker%20Hub-mraees1989-blue)](https://hub.docker.com/u/mraees1989)
-[![HIPAA](https://img.shields.io/badge/HIPAA-45%20CFR%20164.312-green)](https://www.hhs.gov/hipaa)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+A real-time AI-powered cardiac monitoring platform built on AWS EC2 using event-driven AIOps principles.
 
 ---
 
-## Overview
+## About
 
-CardioCare-AIOps is a production-grade, event-driven platform for real-time cardiac monitoring built on AWS EC2 (Ubuntu 22.04, t3.large). Built for **DAIOL6 EduQual Level 6 — Topic 7: Serverless Architectures, Event-Driven AIOps, Observability & Security**.
+CardioCare-AIOps detects cardiac anomalies in real time by combining machine learning with live ECG data streams. The system processes heartbeat data through Apache Kafka, classifies arrhythmias using a trained XGBoost model, and delivers critical alerts through a serverless function — all secured with enterprise-grade encryption and access control.
 
-| Metric | Value |
-|---|---|
-| ML Accuracy | **97.27%** XGBoost on MIT-BIH (87,554 ECG beats) |
-| AUC-ROC | **0.9927** |
-| Services | **15** microservices via Docker Compose |
-| CI/CD | **18** consecutive green GitHub Actions runs |
-| Security | OWASP ZAP: **FAIL-NEW=0, PASS=64** |
-| Compliance | HIPAA 45 CFR 164.312, ISO 27001, GDPR, NIST |
+## Highlights
 
----
+- XGBoost classifier trained on 87,554 real ECG heartbeats — 97.27% accuracy
+- 15 microservices running live on AWS EC2 via Docker Compose
+- Real-time streaming through Apache Kafka with AES-256-GCM encryption
+- Serverless alerting via OpenFaaS faasd — scale to zero proven
+- Full observability with Prometheus, Grafana, Loki, and Jaeger
+- HIPAA 45 CFR 164.312 compliant with tamper-evident audit logging
+- OWASP ZAP security scan — zero critical vulnerabilities, 64 checks passed
 
-## Architecture
+## Technologies Used
 
-```
-ECG Sensors → [Kafka: 3 topics] → [AIOps Engine: XGBoost + IsolationForest + Rules]
-                                          ↓
-                              [HIPAA Audit] [Alert Function (FaaS)]
-                                          ↓
-                              [FastAPI :8000] ← Keycloak JWT + OPA RBAC
-                                          ↓
-                         [Prometheus + Grafana + Loki + Jaeger]
-```
+Apache Kafka, FastAPI, XGBoost, scikit-learn, OpenFaaS, Keycloak, Open Policy Agent, Prometheus, Grafana, Loki, Jaeger, OpenTelemetry, Docker
 
-**5 Layers:** Security → API Gateway → AIOps Engine → Kafka Streaming → Observability
+## Getting Started
 
----
-
-## Quick Start
-
-```bash
 git clone https://github.com/raeesmalik89-oss/CardioCare-AIOps.git
 cd CardioCare-AIOps
-cp .env.example .env   # never commit .env
+cp .env.example .env
 docker compose up -d
-```
 
 ---
 
-## Key Services
+## Academic Context
 
-| Service | Port | Purpose |
-|---|---|---|
-| cardiocare-api | 8000 | FastAPI + JWT + OPA |
-| cardiocare-keycloak | 8086 | OIDC Identity Provider |
-| cardiocare-grafana | 3000 | Live dashboard (6 panels) |
-| cardiocare-prometheus | 9090 | Metrics scraping |
-| cardiocare-jaeger | 16686 | Distributed tracing |
-| kafka-ui | 8085 | Kafka management |
+Programme:   AIOps — EduQual Level 6
+Institution: Alnafi International College
+Topic:       Serverless Architectures, Event-Driven AIOps, Observability and Security
+Author:      Muhammad Raees
+Date:        June 2026
 
 ---
 
-## Security & Compliance
+## License
 
-- **Auth:** Keycloak OIDC RS256 JWT → OPA RBAC deny-by-default
-- **Encryption:** AES-256-GCM PHI + PBKDF2-HMAC-SHA256 (310,000 iterations)
-- **Audit:** HMAC-SHA256 tamper-evident JSONL logs, pseudonymised patient refs
-- **Scan:** OWASP ZAP — FAIL-NEW=0, PASS=64 (reports in repo)
+MIT License
 
----
+Copyright (c) 2026 Muhammad Raees
 
-## CI/CD
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
 
-4-job GitHub Actions pipeline — **18 green runs**:
-`lint` → `encryption-test` → `docker-validate` → `docker-push` (6 images to [mraees1989](https://hub.docker.com/u/mraees1989))
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
 
----
-
-## Author
-
-**Muhammad Raees** | DAIOL6 EduQual Level 6 | Topic 7 | June 2026
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
