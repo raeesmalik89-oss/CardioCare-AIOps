@@ -87,21 +87,10 @@ jobs:
           context: services/alert-function
           push: true
           tags: mraees1989/cardiocare-alert-function:latest,mraees1989/cardiocare-alert-function:v1.1
-      - name: Build and push hipaa-audit
-        uses: docker/build-push-action@v5
-        with:
-          context: services/hipaa-audit
-          push: true
-          tags: mraees1989/cardiocare-hipaa-audit:latest,mraees1989/cardiocare-hipaa-audit:v1.1
       - name: Build and push api
         uses: docker/build-push-action@v5
         with:
           context: services/api
           push: true
           tags: mraees1989/cardiocare-api:latest,mraees1989/cardiocare-api:v1.1
-      - name: Build and push ml-trainer
-        uses: docker/build-push-action@v5
-        with:
-          context: services/ml-trainer
-          push: true
-          tags: mraees1989/cardiocare-ml-trainer:latest,mraees1989/cardiocare-ml-trainer:v1.1
+
