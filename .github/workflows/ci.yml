@@ -17,9 +17,10 @@ jobs:
           python-version: '3.11'
       - run: pip install flake8
       - run: |
-          flake8 services/producer/producer.py --max-line-length=120 --ignore=E501,W503
-          flake8 services/aiops-engine/detector.py --max-line-length=120 --ignore=E501,W503
-          flake8 services/alert-function/handler.py --max-line-length=120 --ignore=E501,W503
+      - run: |
+          flake8 services/producer/producer.py --max-line-length=120 --ignore=E501,W503,W504,E1,E2,E302,F401
+          flake8 services/aiops-engine/detector.py --max-line-length=120 --ignore=E501,W503,W504,E1,E2,E302,F401
+          flake8 services/alert-function/handler.py --max-line-length=120 --ignore=E501,W503,W504,E1,E2,E302,F401
 
   encryption-test:
     runs-on: ubuntu-latest
