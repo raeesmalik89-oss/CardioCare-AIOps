@@ -1,0 +1,106 @@
+
+name: CardioCare-AIOps CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install flake8
+      - run: |
+          flake8 services/producer/producer.py --max-line-length=120 --ignore=E501,W503
+          flake8 services/aiops-engine/detector.py --max-line-length=120 --ignore=E501,W503
+          flake8 services/alert-function/handler.py --max-line-length=120 --ignore=E501,W503
+
+  encryption-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install cryptography
+      - run: |
+          python3 -c "
+          from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+          from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+          from cryptography.hazmat.primitives import hashes
+          import os, base64
+          salt = os.urandom(16)
+          kdf = PBKDF2HMAC(algorithm=hashes.SHA256(), length=32, salt=salt, iterations=310000)
+          key = kdf.derive(b'test-password')
+          aesgcm = AESGCM(key)
+          nonce = os.urandom(12)
+          ct = aesgcm.encrypt(nonce, b'HIPAA-PHI-TEST', None)
+          pt = aesgcm.decrypt(nonce, ct, None)
+          assert pt == b'HIPAA-PHI-TEST'
+          print('AES-256-GCM encryption test PASSED')
+          "
+
+  docker-validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker compose config
+        env:
+          KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+          SECRET_KEY: test-secret-key-for-ci
+          GRAFANA_PASSWORD: test-grafana-password
+          KEYCLOAK_SECRET: test-keycloak-secret
+
+  docker-push:
+    runs-on: ubuntu-latest
+    needs: [lint, encryption-test, docker-validate]
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+      - uses: docker/setup-buildx-action@v3
+      - name: Build and push producer
+        uses: docker/build-push-action@v5
+        with:
+          context: services/producer
+          push: true
+          tags: mraees1989/cardiocare-producer:latest,mraees1989/cardiocare-producer:v1.1
+      - name: Build and push aiops-engine
+        uses: docker/build-push-action@v5
+        with:
+          context: services/aiops-engine
+          push: true
+          tags: mraees1989/cardiocare-aiops-engine:latest,mraees1989/cardiocare-aiops-engine:v1.1
+      - name: Build and push alert-function
+        uses: docker/build-push-action@v5
+        with:
+          context: services/alert-function
+          push: true
+          tags: mraees1989/cardiocare-alert-function:latest,mraees1989/cardiocare-alert-function:v1.1
+      - name: Build and push hipaa-audit
+        uses: docker/build-push-action@v5
+        with:
+          context: services/hipaa-audit
+          push: true
+          tags: mraees1989/cardiocare-hipaa-audit:latest,mraees1989/cardiocare-hipaa-audit:v1.1
+      - name: Build and push api
+        uses: docker/build-push-action@v5
+        with:
+          context: services/api
+          push: true
+          tags: mraees1989/cardiocare-api:latest,mraees1989/cardiocare-api:v1.1
+      - name: Build and push ml-trainer
+        uses: docker/build-push-action@v5
+        with:
+          context: services/ml-trainer
+          push: true
+          tags: mraees1989/cardiocare-ml-trainer:latest,mraees1989/cardiocare-ml-trainer:v1.1
