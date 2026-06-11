@@ -52,6 +52,16 @@ NORMAL = {
     "respiratory_rate": (12, 20),
 }
 
+# ICU bed assignment — maps patient ID to physical bed number
+BED_MAP = {
+    "PT-001": "BED-01",
+    "PT-002": "BED-02",
+    "PT-003": "BED-03",
+    "PT-004": "BED-04",
+    "PT-005": "BED-05",
+}
+
+
 # Anomalous ranges (cardiac emergency)
 ANOMALY = {
     "heart_rate":     [(30, 45), (160, 200)],  # bradycardia or tachycardia
@@ -105,7 +115,27 @@ def build_event(patient_id: str, is_anomaly: bool, seq: int) -> dict:
         "vitals": vitals,
         "ecg_sample": ecg_val,
         "device_id": f"DEVICE-{patient_id}",
-        "ward": random.choice(["ICU", "CCU", "CARDIAC-OT", "GENERAL"]),
+
+        # ICU location fields
+        "ward": "ICU",
+        "bed_number": BED_MAP[patient_id],
+        # NEWS2 early warning score — calculated from live vitals
+        "news2_score": (
+            (3 if vitals["heart_rate"] >= 131 or vitals["heart_rate"] <= 40 else
+             2 if vitals["heart_rate"] >= 111 else
+             1 if vitals["heart_rate"] >= 91 else 0) +
+            (3 if vitals["spo2"] <= 91 else
+             2 if vitals["spo2"] <= 93 else
+             1 if vitals["spo2"] <= 95 else 0) +
+            (3 if vitals["systolic_bp"] <= 90 else
+             2 if vitals["systolic_bp"] <= 100 else
+             1 if vitals["systolic_bp"] <= 110 else
+             3 if vitals["systolic_bp"] >= 220 else 0) +
+            (3 if vitals["respiratory_rate"] >= 25 else
+             2 if vitals["respiratory_rate"] >= 21 else
+             1 if vitals["respiratory_rate"] <= 11 else 0)
+        ),
+
         "is_simulated_anomaly": is_anomaly,
     }
 
@@ -139,7 +169,9 @@ def main():
 
     while True:
         patient_id = random.choice(PATIENT_IDS)
+
         # Inject anomaly roughly every 20 events per patient if enabled
+
         is_anomaly = SIMULATE_ANOMALIES and (random.random() < 0.05)
 
         if is_anomaly:

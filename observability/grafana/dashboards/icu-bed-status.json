@@ -1,0 +1,90 @@
+{
+  "title": "ICU Bed Status",
+  "uid": "icu-bed-status",
+  "schemaVersion": 36,
+  "version": 1,
+  "refresh": "10s",
+  "time": {"from": "now-1h", "to": "now"},
+  "templating": {
+    "list": [{
+      "name": "bed_number",
+      "type": "query",
+      "datasource": "Prometheus",
+      "query": "label_values(cardiocare_heart_rate, bed_number)",
+      "refresh": 2,
+      "includeAll": true,
+      "allValue": ".*",
+      "current": {}
+    }]
+  },
+  "panels": [
+    {
+      "id": 1, "type": "stat", "title": "Heart Rate by Bed",
+      "gridPos": {"x": 0, "y": 0, "w": 24, "h": 6},
+      "datasource": "Prometheus",
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "orientation": "auto", "colorMode": "background"},
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bpm",
+          "thresholds": {"mode": "absolute", "steps": [
+            {"color": "green", "value": null},
+            {"color": "yellow", "value": 91},
+            {"color": "red", "value": 111}
+          ]}
+        }
+      },
+      "targets": [{"expr": "cardiocare_heart_rate{bed_number=~\"$bed_number\"}", "legendFormat": "{{bed_number}} HR"}]
+    },
+    {
+      "id": 2, "type": "stat", "title": "SpO2 by Bed",
+      "gridPos": {"x": 0, "y": 6, "w": 24, "h": 6},
+      "datasource": "Prometheus",
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "orientation": "auto", "colorMode": "background"},
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "thresholds": {"mode": "absolute", "steps": [
+            {"color": "red", "value": null},
+            {"color": "yellow", "value": 92},
+            {"color": "green", "value": 96}
+          ]}
+        }
+      },
+      "targets": [{"expr": "cardiocare_spo2{bed_number=~\"$bed_number\"}", "legendFormat": "{{bed_number}} SpO2"}]
+    },
+    {
+      "id": 3, "type": "stat", "title": "NEWS2 Score by Bed",
+      "gridPos": {"x": 0, "y": 12, "w": 24, "h": 6},
+      "datasource": "Prometheus",
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "orientation": "auto", "colorMode": "background"},
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {"mode": "absolute", "steps": [
+            {"color": "green", "value": null},
+            {"color": "orange", "value": 5},
+            {"color": "red", "value": 7}
+          ]}
+        }
+      },
+      "targets": [{"expr": "cardiocare_news2_score{bed_number=~\"$bed_number\"}", "legendFormat": "{{bed_number}} NEWS2"}]
+    },
+    {
+      "id": 4, "type": "stat", "title": "Risk Score by Bed",
+      "gridPos": {"x": 0, "y": 18, "w": 24, "h": 6},
+      "datasource": "Prometheus",
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "orientation": "auto", "colorMode": "background"},
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {"mode": "absolute", "steps": [
+            {"color": "green", "value": null},
+            {"color": "orange", "value": 0.3},
+            {"color": "red", "value": 0.6}
+          ]}
+        }
+      },
+      "targets": [{"expr": "cardiocare_risk_score{bed_number=~\"$bed_number\"}", "legendFormat": "{{bed_number}} Risk"}]
+    }
+  ]
+}

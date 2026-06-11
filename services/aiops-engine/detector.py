@@ -68,9 +68,11 @@ model_score        = Gauge("cardiocare_model_score",        "Latest anomaly scor
 model_retrain_ts   = Gauge("cardiocare_model_last_retrain", "Last model retrain timestamp")
 processing_latency = Histogram("cardiocare_processing_seconds", "Event processing latency",
                                 buckets=[0.001, 0.005, 0.01, 0.05, 0.1, 0.5])
-current_hr         = Gauge("cardiocare_heart_rate",         "Latest heart rate",     ["patient_id"])
-current_spo2       = Gauge("cardiocare_spo2",               "Latest SpO2",           ["patient_id"])
-current_systolic   = Gauge("cardiocare_systolic_bp",        "Latest systolic BP",    ["patient_id"])
+current_hr        = Gauge("cardiocare_heart_rate",   "Latest heart rate",  ["patient_id", "bed_number"])
+current_spo2      = Gauge("cardiocare_spo2",          "Latest SpO2",        ["patient_id", "bed_number"])
+current_systolic  = Gauge("cardiocare_systolic_bp",   "Latest systolic BP", ["patient_id", "bed_number"])
+current_news2     = Gauge("cardiocare_news2_score",   "Latest NEWS2 score", ["patient_id", "bed_number"])
+current_risk      = Gauge("cardiocare_risk_score",    "Latest risk score",  ["patient_id", "bed_number"])
 
 
 class AIOpsEngine:
@@ -201,7 +203,8 @@ def main():
             event = message.value
             patient_id = event.get("patient_id", "UNKNOWN")
             vitals = event.get("vitals", {})
-
+            bed_number  = event.get("bed_number", "UNKNOWN")
+            news2_score = event.get("news2_score", 0)
             features = engine.extract_features(event)
             engine.add_to_buffer(features)
 
@@ -212,9 +215,11 @@ def main():
             events_processed.inc()
 
             # Update per-patient gauges
-            current_hr.labels(patient_id=patient_id).set(vitals.get("heart_rate", 0))
-            current_spo2.labels(patient_id=patient_id).set(vitals.get("spo2", 0))
-            current_systolic.labels(patient_id=patient_id).set(vitals.get("systolic_bp", 0))
+            current_hr.labels(patient_id=patient_id, bed_number=bed_number).set(vitals.get("heart_rate", 0))
+            current_spo2.labels(patient_id=patient_id, bed_number=bed_number).set(vitals.get("spo2", 0))
+            current_systolic.labels(patient_id=patient_id, bed_number=bed_number).set(vitals.get("systolic_bp", 0))
+            current_news2.labels(patient_id=patient_id, bed_number=bed_number).set(news2_score)
+            current_risk.labels(patient_id=patient_id, bed_number=bed_number).set(round(abs(score), 4))
 
             if prediction == -1 or score < ANOMALY_THRESHOLD:
                 anomalies_detected.inc()

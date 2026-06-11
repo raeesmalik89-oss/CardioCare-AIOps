@@ -69,6 +69,9 @@ def handle_alert(alert: dict) -> dict:
         severity   = alert.get("severity", "UNKNOWN")
         vitals     = alert.get("vitals", {})
         ward       = alert.get("ward", "UNKNOWN")
+        bed_number  = alert.get("bed_number", "UNKNOWN")
+        news2_score = alert.get("news2_score", 0)
+        trend       = alert.get("trend", "UNKNOWN")
         ts         = alert.get("timestamp", datetime.now(timezone.utc).isoformat())
 
         result = {
@@ -77,15 +80,25 @@ def handle_alert(alert: dict) -> dict:
             "patient_id": patient_id,
             "severity": severity,
             "ward": ward,
+            "bed_number":     bed_number,
+            "news2_score":    news2_score,
+            "trend":          trend,
+            "vitals_summary": {
+                "hr":   vitals.get("heart_rate", "?"),
+                "spo2": vitals.get("spo2", "?"),
+                "bp":   f"{vitals.get('systolic_bp','?')}/{vitals.get('diastolic_bp','?')}",
+            },
+
             "timestamp": ts,
             "notification": {
                 "type": "CARDIAC_EMERGENCY",
-                "message": (
-                    f"CARDIAC ALERT: Patient {patient_id} in {ward}. "
-                    f"HR={vitals.get('heart_rate','?')}, "
-                    f"SpO2={vitals.get('spo2','?')}%, "
-                    f"BP={vitals.get('systolic_bp','?')}/{vitals.get('diastolic_bp','?')}"
-                ),
+            "message": (
+                f"CARDIAC ALERT: Patient {patient_id} | Bed {bed_number} | {ward}. "
+                f"HR={vitals.get('heart_rate','?')}, "
+                f"SpO2={vitals.get('spo2','?')}%, "
+                f"BP={vitals.get('systolic_bp','?')}/{vitals.get('diastolic_bp','?')} | "
+                f"NEWS2={news2_score} | Trend={trend}"
+            ),
                 "escalation": "CALL_CODE_BLUE" if severity == "CRITICAL" else "NOTIFY_NURSE",
                 "iso27001_ref": "A.16.1.5",   # incident management control
             },

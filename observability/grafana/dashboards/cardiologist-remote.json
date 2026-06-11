@@ -1,0 +1,107 @@
+{
+  "title": "Cardiologist Remote View",
+  "uid": "cardiologist-remote",
+  "schemaVersion": 36,
+  "version": 1,
+  "refresh": "10s",
+  "time": {"from": "now-1h", "to": "now"},
+  "templating": {
+    "list": [{
+      "name": "patient_id",
+      "type": "query",
+      "datasource": "Prometheus",
+      "query": "label_values(cardiocare_heart_rate, patient_id)",
+      "refresh": 2,
+      "current": {}
+    }]
+  },
+  "panels": [
+    {
+      "id": 1, "type": "stat", "title": "Heart Rate",
+      "gridPos": {"x": 0, "y": 0, "w": 6, "h": 4},
+      "datasource": "Prometheus",
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "background"},
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bpm",
+          "thresholds": {"mode": "absolute", "steps": [
+            {"color": "green", "value": null},
+            {"color": "yellow", "value": 91},
+            {"color": "red", "value": 111}
+          ]}
+        }
+      },
+      "targets": [{"expr": "cardiocare_heart_rate{patient_id=\"$patient_id\"}", "legendFormat": "HR"}]
+    },
+    {
+      "id": 2, "type": "stat", "title": "SpO2",
+      "gridPos": {"x": 6, "y": 0, "w": 6, "h": 4},
+      "datasource": "Prometheus",
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "background"},
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "thresholds": {"mode": "absolute", "steps": [
+            {"color": "red", "value": null},
+            {"color": "yellow", "value": 92},
+            {"color": "green", "value": 96}
+          ]}
+        }
+      },
+      "targets": [{"expr": "cardiocare_spo2{patient_id=\"$patient_id\"}", "legendFormat": "SpO2"}]
+    },
+    {
+      "id": 3, "type": "stat", "title": "NEWS2 Score",
+      "gridPos": {"x": 12, "y": 0, "w": 6, "h": 4},
+      "datasource": "Prometheus",
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "background"},
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {"mode": "absolute", "steps": [
+            {"color": "green", "value": null},
+            {"color": "orange", "value": 5},
+            {"color": "red", "value": 7}
+          ]}
+        }
+      },
+      "targets": [{"expr": "cardiocare_news2_score{patient_id=\"$patient_id\"}", "legendFormat": "NEWS2"}]
+    },
+    {
+      "id": 4, "type": "stat", "title": "Risk Score",
+      "gridPos": {"x": 18, "y": 0, "w": 6, "h": 4},
+      "datasource": "Prometheus",
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "background"},
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {"mode": "absolute", "steps": [
+            {"color": "green", "value": null},
+            {"color": "orange", "value": 0.3},
+            {"color": "red", "value": 0.6}
+          ]}
+        }
+      },
+      "targets": [{"expr": "cardiocare_risk_score{patient_id=\"$patient_id\"}", "legendFormat": "Risk"}]
+    },
+    {
+      "id": 5, "type": "timeseries", "title": "Vitals Trend — Last 1 Hour",
+      "gridPos": {"x": 0, "y": 4, "w": 24, "h": 10},
+      "datasource": "Prometheus",
+      "fieldConfig": {"defaults": {"unit": "short"}},
+      "targets": [
+        {"expr": "cardiocare_heart_rate{patient_id=\"$patient_id\"}", "legendFormat": "HR (bpm)"},
+        {"expr": "cardiocare_spo2{patient_id=\"$patient_id\"}", "legendFormat": "SpO2 (%)"},
+        {"expr": "cardiocare_news2_score{patient_id=\"$patient_id\"}", "legendFormat": "NEWS2"},
+        {"expr": "cardiocare_systolic_bp{patient_id=\"$patient_id\"}", "legendFormat": "Systolic BP"}
+      ]
+    },
+    {
+      "id": 6, "type": "logs", "title": "Recent Alerts — $patient_id",
+      "gridPos": {"x": 0, "y": 14, "w": 24, "h": 8},
+      "datasource": "Loki",
+      "options": {"dedupStrategy": "none", "showTime": true, "sortOrder": "Descending"},
+      "targets": [{"expr": "{container=~\".+\"} |= \"$patient_id\" |= \"ALERT\"", "legendFormat": ""}]
+    }
+  ]
+}
