@@ -1,0 +1,37 @@
+2026-06-14 21:59:13,854 [ML-TRAINER] INFO CardioCare ML Trainer starting
+2026-06-14 21:59:13,855 [ML-TRAINER] INFO Data dir   : /data
+2026-06-14 21:59:13,855 [ML-TRAINER] INFO Models dir : /models
+2026-06-14 21:59:13,855 [ML-TRAINER] INFO Loading MIT-BIH dataset from /data
+2026-06-14 21:59:20,225 [ML-TRAINER] INFO Train: 87554 samples | Test: 21892 samples
+2026-06-14 21:59:20,233 [ML-TRAINER] INFO Class distribution: {0: 72471, 1: 2223, 2: 5788, 3: 641, 4: 6431}
+2026-06-14 21:59:20,244 [ML-TRAINER] INFO Training XGBoost classifier...
+/usr/local/lib/python3.11/site-packages/xgboost/training.py:200: UserWarning: [21:59:22] WARNING: /__w/xgboost/xgboost/src/learner.cc:782: 
+Parameters: { "use_label_encoder" } are not used.
+
+  bst.update(dtrain, iteration=i, fobj=obj)
+2026-06-14 22:01:13,725 [ML-TRAINER] INFO XGBoost training complete
+2026-06-14 22:01:15,025 [ML-TRAINER] INFO Test accuracy: 0.9727 (97.3%)
+2026-06-14 22:01:15,084 [ML-TRAINER] INFO Classification report:
+                  precision    recall  f1-score   support
+
+          Normal       0.99      0.98      0.98     18118
+Supraventricular       0.67      0.81      0.73       556
+     Ventricular       0.93      0.95      0.94      1448
+          Fusion       0.69      0.85      0.76       162
+  Unclassifiable       0.98      0.98      0.98      1608
+
+        accuracy                           0.97     21892
+       macro avg       0.85      0.91      0.88     21892
+    weighted avg       0.98      0.97      0.97     21892
+
+2026-06-14 22:01:15,123 [ML-TRAINER] INFO Weighted AUC-ROC: 0.9927
+2026-06-14 22:01:15,133 [ML-TRAINER] INFO Confusion matrix:
+[[17750   220    75    46    27]
+ [   99   449     6     0     2]
+ [   44     3  1381    16     4]
+ [   13     0    11   138     0]
+ [   24     3     5     0  1576]]
+2026-06-14 22:01:15,204 [ML-TRAINER] INFO Model saved to /models/xgboost_ecg_classifier.json
+2026-06-14 22:01:15,205 [ML-TRAINER] INFO Training metadata saved to /models/training_metadata.json
+2026-06-14 22:01:15,205 [ML-TRAINER] INFO ML training complete — model ready for aiops-engine
+2026-06-14 22:01:15,205 [ML-TRAINER] INFO Accuracy: 97.3% | AUC-ROC: 0.9927

@@ -10,3 +10,10 @@ prometheus-data/
 grafana-data/
 loki-data/
 keycloak-data/
+
+data/
+*.csv
+venv/
+certs/
+*.tgz
+services/aiops-engine/detector.py.save

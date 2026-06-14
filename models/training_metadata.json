@@ -1,0 +1,18 @@
+{
+  "model": "XGBoostClassifier",
+  "dataset": "MIT-BIH Arrhythmia Dataset",
+  "features": 187,
+  "classes": {
+    "0": "Normal",
+    "1": "Supraventricular",
+    "2": "Ventricular",
+    "3": "Fusion",
+    "4": "Unclassifiable"
+  },
+  "trained_at": "2026-06-14T22:01:15.204822Z",
+  "model_path": "/models/xgboost_ecg_classifier.json",
+  "accuracy": 0.9727,
+  "auc_roc": 0.9927,
+  "author": "Muhammad Raees",
+  "compliance": "HIPAA 45 CFR 164.312 \u2014 model trained on de-identified data"
+}
