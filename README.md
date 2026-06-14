@@ -7,11 +7,12 @@ A real-time AI-powered cardiac monitoring platform built on AWS EC2 using event-
 
 ## About
 
-CardioCare-AIOps detects cardiac anomalies in real time by combining machine learning with simulated ECG and vital-sign streams. Apache Kafka carries AES-256-GCM encrypted event envelopes, a scikit-learn Isolation Forest detects anomalies, and critical events invoke an alert function that can run in Docker Compose or OpenFaaS.
+CardioCare-AIOps detects cardiac anomalies in real time by combining machine learning with simulated ECG and vital-sign streams. Apache Kafka carries AES-256-GCM encrypted event envelopes, a scikit-learn Isolation Forest detects anomalies in the live path, and critical events invoke an alert function that can run in Docker Compose or OpenFaaS. An offline XGBoost classifier trained on the MIT-BIH Arrhythmia dataset benchmarks and validates the live detector.
 
 ## Highlights
 
-- Adaptive Isolation Forest anomaly detection with scheduled retraining
+- Adaptive Isolation Forest anomaly detection with scheduled retraining (live path)
+- Offline XGBoost benchmark on MIT-BIH (87,554 beats, 97.27% accuracy, AUC-ROC 0.9927)
 - Event-driven services deployable on AWS EC2 via Docker Compose
 - Real-time streaming through Apache Kafka with AES-256-GCM encryption
 - OpenFaaS deployment image and scale-to-zero function manifest
@@ -21,7 +22,23 @@ CardioCare-AIOps detects cardiac anomalies in real time by combining machine lea
 
 ## Technologies Used
 
-Apache Kafka, FastAPI, Flask, scikit-learn, OpenFaaS, Keycloak, Open Policy Agent, Prometheus, Grafana, Loki, Jaeger, OpenTelemetry, Docker
+Apache Kafka, FastAPI, Flask, scikit-learn, XGBoost, OpenFaaS, Keycloak, Open Policy Agent, Prometheus, Grafana, Loki, Jaeger, OpenTelemetry, Docker
+
+## Machine Learning Models
+
+CardioCare-AIOps uses a hybrid detection strategy:
+
+- **Live path — Isolation Forest + clinical rules** (`services/aiops-engine`): unsupervised anomaly scoring on streaming vitals, with clinical rules overriding the model for life-threatening values and routing severity (CRITICAL / HIGH / MEDIUM / LOW). Retrains on a schedule from real observations.
+- **Offline benchmark — XGBoost** (`services/ml-trainer`): a supervised classifier trained on the MIT-BIH Arrhythmia dataset (5 AAMI classes, 187 features) that benchmarks and validates the live detector.
+
+| Metric | Value |
+|---|---|
+| Training samples | 87,554 |
+| Test samples | 21,892 |
+| Test accuracy | 97.27% |
+| Weighted AUC-ROC | 0.9927 |
+
+The trained model and run metrics are committed at `models/xgboost_ecg_classifier.json` and `models/training_metadata.json`; the full training log is under `evidence/`. Reproduce or rebuild the trainer via `services/ml-trainer/README.md` (prebuilt image: `mraees1989/cardiocare-ml-trainer:v1.0`).
 
 ## Getting Started
 
