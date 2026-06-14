@@ -2,6 +2,6 @@ FROM python:3.11-slim
 WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
-COPY handler.py .
+COPY handler.py crypto.py ./
 EXPOSE 5000 8002
 CMD ["python", "-u", "handler.py"]

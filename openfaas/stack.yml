@@ -1,0 +1,20 @@
+version: 1.0
+provider:
+  name: openfaas
+  gateway: http://127.0.0.1:8080
+
+functions:
+  cardiocare-alert-handler:
+    image: mraees1989/cardiocare-alert-function:openfaas
+    skip_build: true
+    environment:
+      FUNCTION_MODE: "true"
+      WEBHOOK_URL: ""
+    secrets:
+      - event-encryption-key
+    labels:
+      com.openfaas.scale.min: "0"
+      com.openfaas.scale.max: "5"
+      com.openfaas.scale.zero: "true"
+    annotations:
+      topic: cardiac.alerts.critical

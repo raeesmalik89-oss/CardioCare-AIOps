@@ -27,6 +27,7 @@ import math
 from datetime import datetime, timezone
 from kafka import KafkaProducer
 from kafka.errors import NoBrokersAvailable
+from crypto import encrypt_event
 
 logging.basicConfig(
     level=logging.INFO,
@@ -145,7 +146,6 @@ def wait_for_kafka(bootstrap_servers: str, retries: int = 30) -> KafkaProducer:
         try:
             producer = KafkaProducer(
                 bootstrap_servers=bootstrap_servers,
-                value_serializer=lambda v: json.dumps(v).encode("utf-8"),
                 key_serializer=lambda k: k.encode("utf-8"),
                 acks="all",
                 retries=5,
@@ -178,7 +178,7 @@ def main():
             anomaly_counter += 1
 
         event = build_event(patient_id, is_anomaly, seq)
-        producer.send(KAFKA_TOPIC, key=patient_id, value=event)
+        producer.send(KAFKA_TOPIC, key=patient_id, value=encrypt_event(event))
 
         if is_anomaly:
             log.warning("ANOMALY INJECTED | patient=%s HR=%.0f SpO2=%.0f BP=%d/%d",

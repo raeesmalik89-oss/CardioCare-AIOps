@@ -41,6 +41,7 @@ from kafka import KafkaConsumer, KafkaProducer
 from kafka.errors import NoBrokersAvailable
 from sklearn.ensemble import IsolationForest
 from prometheus_client import start_http_server, Counter, Gauge, Histogram
+from crypto import decrypt_event, encrypt_event
 
 logging.basicConfig(
     level=logging.INFO,
@@ -68,11 +69,11 @@ model_score        = Gauge("cardiocare_model_score",        "Latest anomaly scor
 model_retrain_ts   = Gauge("cardiocare_model_last_retrain", "Last model retrain timestamp")
 processing_latency = Histogram("cardiocare_processing_seconds", "Event processing latency",
                                 buckets=[0.001, 0.005, 0.01, 0.05, 0.1, 0.5])
-current_hr        = Gauge("cardiocare_heart_rate",   "Latest heart rate",  ["patient_id", "bed_number"])
-current_spo2      = Gauge("cardiocare_spo2",          "Latest SpO2",        ["patient_id", "bed_number"])
-current_systolic  = Gauge("cardiocare_systolic_bp",   "Latest systolic BP", ["patient_id", "bed_number"])
-current_news2     = Gauge("cardiocare_news2_score",   "Latest NEWS2 score", ["patient_id", "bed_number"])
-current_risk      = Gauge("cardiocare_risk_score",    "Latest risk score",  ["patient_id", "bed_number"])
+current_hr        = Gauge("cardiocare_heart_rate",   "Latest heart rate",  ["bed_number"])
+current_spo2      = Gauge("cardiocare_spo2",          "Latest SpO2",        ["bed_number"])
+current_systolic  = Gauge("cardiocare_systolic_bp",   "Latest systolic BP", ["bed_number"])
+current_news2     = Gauge("cardiocare_news2_score",   "Latest NEWS2 score", ["bed_number"])
+current_risk      = Gauge("cardiocare_risk_score",    "Latest risk score",  ["bed_number"])
 
 
 class AIOpsEngine:
@@ -155,14 +156,13 @@ def wait_for_kafka(bootstrap_servers: str, retries: int = 30):
         try:
             producer = KafkaProducer(
                 bootstrap_servers=bootstrap_servers,
-                value_serializer=lambda v: json.dumps(v).encode("utf-8"),
                 key_serializer=lambda k: k.encode("utf-8"),
                 acks="all",
             )
             consumer = KafkaConsumer(
                 INPUT_TOPIC,
                 bootstrap_servers=bootstrap_servers,
-                value_deserializer=lambda m: json.loads(m.decode("utf-8")),
+                value_deserializer=decrypt_event,
                 group_id="cardiocare-aiops-engine",
                 auto_offset_reset="latest",
                 enable_auto_commit=True,
@@ -215,11 +215,11 @@ def main():
             events_processed.inc()
 
             # Update per-patient gauges
-            current_hr.labels(patient_id=patient_id, bed_number=bed_number).set(vitals.get("heart_rate", 0))
-            current_spo2.labels(patient_id=patient_id, bed_number=bed_number).set(vitals.get("spo2", 0))
-            current_systolic.labels(patient_id=patient_id, bed_number=bed_number).set(vitals.get("systolic_bp", 0))
-            current_news2.labels(patient_id=patient_id, bed_number=bed_number).set(news2_score)
-            current_risk.labels(patient_id=patient_id, bed_number=bed_number).set(round(abs(score), 4))
+            current_hr.labels(bed_number=bed_number).set(vitals.get("heart_rate", 0))
+            current_spo2.labels(bed_number=bed_number).set(vitals.get("spo2", 0))
+            current_systolic.labels(bed_number=bed_number).set(vitals.get("systolic_bp", 0))
+            current_news2.labels(bed_number=bed_number).set(news2_score)
+            current_risk.labels(bed_number=bed_number).set(round(abs(score), 4))
 
             if prediction == -1 or score < ANOMALY_THRESHOLD:
                 anomalies_detected.inc()
@@ -236,11 +236,11 @@ def main():
                     "model": "IsolationForest",
                     "features_used": FEATURES,
                 }
-                producer.send(ANOMALY_TOPIC, key=patient_id, value=anomaly_event)
+                producer.send(ANOMALY_TOPIC, key=patient_id, value=encrypt_event(anomaly_event))
 
-                log.warning("ANOMALY | patient=%s | severity=%s | score=%.4f | "
+                log.warning("ANOMALY | bed=%s | severity=%s | score=%.4f | "
                             "HR=%.0f | SpO2=%.0f%% | BP=%d/%d",
-                            patient_id, severity, score,
+                            bed_number, severity, score,
                             vitals.get("heart_rate", 0),
                             vitals.get("spo2", 0),
                             vitals.get("systolic_bp", 0),
@@ -254,9 +254,9 @@ def main():
                         "action_required": "IMMEDIATE_CLINICAL_REVIEW",
                         "triggered_function": "alert-handler-v1",
                     }
-                    producer.send(ALERT_TOPIC, key=patient_id, value=alert)
-                    log.error("CRITICAL ALERT FIRED | patient=%s | HR=%.0f | SpO2=%.0f%%",
-                              patient_id,
+                    producer.send(ALERT_TOPIC, key=patient_id, value=encrypt_event(alert))
+                    log.error("CRITICAL ALERT FIRED | bed=%s | HR=%.0f | SpO2=%.0f%%",
+                              bed_number,
                               vitals.get("heart_rate", 0),
                               vitals.get("spo2", 0))
 

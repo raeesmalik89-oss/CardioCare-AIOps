@@ -17,10 +17,50 @@ jobs:
           python-version: '3.11'
       - run: pip install flake8
       - run: |
-      - run: |
           flake8 services/producer/producer.py --max-line-length=120 --ignore=E501,W503,W504,E1,E2,E302,F401
           flake8 services/aiops-engine/detector.py --max-line-length=120 --ignore=E501,W503,W504,E1,E2,E302,F401
           flake8 services/alert-function/handler.py --max-line-length=120 --ignore=E501,W503,W504,E1,E2,E302,F401
+          flake8 services/api/main.py --max-line-length=120 --ignore=E501,W503,W504,E1,E2,E302,F401
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install -r services/api/requirements.txt pytest
+      - run: pytest -q
+
+  zap-baseline:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install -r services/api/requirements.txt
+      - name: Start API for security scan
+        working-directory: services/api
+        env:
+          ENABLE_API_KAFKA_CONSUMER: "false"
+          ENABLE_TRACING: "false"
+        run: |
+          uvicorn main:app --host 0.0.0.0 --port 8000 &
+          sleep 10
+          curl --fail http://127.0.0.1:8000/health
+      - name: OWASP ZAP baseline
+        uses: zaproxy/action-baseline@v0.12.0
+        with:
+          target: http://127.0.0.1:8000
+          rules_file_name: .zap/rules.tsv
+          cmd_options: -a -j
+          allow_issue_writing: false
+          fail_action: true
+          artifact_name: zap-security-report
 
   encryption-test:
     runs-on: ubuntu-latest
@@ -30,21 +70,18 @@ jobs:
         with:
           python-version: '3.11'
       - run: pip install cryptography
-      - run: |
+      - name: Test application event encryption
+        env:
+          EVENT_ENCRYPTION_KEY: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+          PYTHONPATH: services/aiops-engine
+        run: |
           python3 -c "
-          from cryptography.hazmat.primitives.ciphers.aead import AESGCM
-          from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
-          from cryptography.hazmat.primitives import hashes
-          import os, base64
-          salt = os.urandom(16)
-          kdf = PBKDF2HMAC(algorithm=hashes.SHA256(), length=32, salt=salt, iterations=310000)
-          key = kdf.derive(b'test-password')
-          aesgcm = AESGCM(key)
-          nonce = os.urandom(12)
-          ct = aesgcm.encrypt(nonce, b'HIPAA-PHI-TEST', None)
-          pt = aesgcm.decrypt(nonce, ct, None)
-          assert pt == b'HIPAA-PHI-TEST'
-          print('AES-256-GCM encryption test PASSED')
+          from crypto import encrypt_event, decrypt_event
+          event = {'patient_id': 'TEST', 'vitals': {'heart_rate': 80}}
+          encrypted = encrypt_event(event)
+          assert b'patient_id' not in encrypted
+          assert decrypt_event(encrypted) == event
+          print('Application AES-256-GCM round trip PASSED')
           "
 
   docker-validate:
@@ -57,10 +94,11 @@ jobs:
           SECRET_KEY: test-secret-key-for-ci
           GRAFANA_PASSWORD: test-grafana-password
           KEYCLOAK_SECRET: test-keycloak-secret
+          EVENT_ENCRYPTION_KEY: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
 
   docker-push:
     runs-on: ubuntu-latest
-    needs: [lint, encryption-test, docker-validate]
+    needs: [lint, test, zap-baseline, encryption-test, docker-validate]
     if: github.ref == 'refs/heads/main'
     steps:
       - uses: actions/checkout@v4
@@ -93,4 +131,11 @@ jobs:
           context: services/api
           push: true
           tags: mraees1989/cardiocare-api:latest,mraees1989/cardiocare-api:v1.1
+      - name: Build and push OpenFaaS alert function
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: openfaas/Dockerfile
+          push: true
+          tags: mraees1989/cardiocare-alert-function:openfaas
 

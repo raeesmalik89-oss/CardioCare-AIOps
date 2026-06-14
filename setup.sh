@@ -59,6 +59,12 @@ PUBLIC_IP=$(curl -s --max-time 3 http://169.254.169.254/latest/meta-data/public-
 sed -i "s/YOUR_EC2_PUBLIC_IP_HERE/$PUBLIC_IP/" .env
 success "EC2 public IP set: $PUBLIC_IP"
 
+if grep -q "REPLACE_WITH_URLSAFE_BASE64_ENCODED_32_BYTE_KEY" .env; then
+    EVENT_KEY=$(openssl rand -base64 32 | tr -d '\n')
+    sed -i "s|REPLACE_WITH_URLSAFE_BASE64_ENCODED_32_BYTE_KEY|$EVENT_KEY|" .env
+    success "Generated AES-256 event encryption key."
+fi
+
 # ── 4. Sysctl for Kafka (Elasticsearch/Kafka requirement) ────────────────────
 sudo sysctl -w vm.max_map_count=262144 2>/dev/null || true
 echo "vm.max_map_count=262144" | sudo tee -a /etc/sysctl.conf >/dev/null 2>&1 || true

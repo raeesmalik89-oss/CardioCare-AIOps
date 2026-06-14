@@ -46,11 +46,6 @@ allow if {
     input.action == "read"
 }
 
-# Dev mode bypass
-allow if {
-    input.user == "dev-user"
-}
-
 # ── Audit log (all decisions are logged via OPA decision log) ─────────────────
 audit_log := {
     "user":     input.user,

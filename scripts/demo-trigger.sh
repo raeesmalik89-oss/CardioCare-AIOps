@@ -39,9 +39,9 @@ JSON
   echo "  -> $PT ($WARD): HR=$HR  SpO2=$SPO2%  BP=$SBP/118   [CRITICAL]"
 done
 
-# Publish the batch into Kafka via the broker container's console producer
-printf '%s' "$EVENTS" | docker exec -i kafka \
-  kafka-console-producer --bootstrap-server kafka:29092 --topic "$TOPIC"
+# Publish through the producer's AES-GCM event envelope.
+printf '%s' "$EVENTS" | docker exec -i cardiocare-producer \
+  python publish_event.py
 
 echo "---------------------------------------------------------------"
 echo "Events published. Now SHOW the pipeline reacting:"
@@ -52,6 +52,6 @@ echo
 echo "  2) Alert function receiving the critical alert:"
 echo "       docker logs -f --tail 20 cardiocare-alert-fn"
 echo
-echo "  3) Or hit the API to see the alerts land:"
-echo "       curl -s http://localhost:8000/api/v1/alerts | jq"
+echo "  3) Or query the protected API with a Keycloak access token:"
+echo "       curl -s -H 'Authorization: Bearer TOKEN' http://localhost:8000/api/v1/alerts | jq"
 echo "==============================================================="

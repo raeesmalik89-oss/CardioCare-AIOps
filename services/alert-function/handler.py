@@ -39,6 +39,7 @@ from kafka import KafkaConsumer
 from kafka.errors import NoBrokersAvailable
 from prometheus_client import start_http_server, Counter, Histogram, make_wsgi_app
 from werkzeug.middleware.dispatcher import DispatcherMiddleware
+from crypto import decrypt_event
 
 logging.basicConfig(
     level=logging.INFO,
@@ -50,6 +51,7 @@ KAFKA_BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "kafka:29092")
 ALERT_TOPIC   = os.getenv("ALERT_TOPIC", "cardiac.alerts.critical")
 WEBHOOK_URL   = os.getenv("WEBHOOK_URL", "")
 PROMETHEUS_PORT = int(os.getenv("PROMETHEUS_PORT", "8002"))
+FUNCTION_MODE = os.getenv("FUNCTION_MODE", "false").lower() == "true"
 
 # ── Prometheus Metrics ────────────────────────────────────────────────────────
 fn_invocations  = Counter("alert_fn_invocations_total",  "Total function invocations")
@@ -104,8 +106,7 @@ def handle_alert(alert: dict) -> dict:
             },
             "actions_taken": [
                 "alert_logged",
-                "nurse_station_notified",
-                "ehr_flagged",
+                "notification_generated",
                 *( ["webhook_sent"] if WEBHOOK_URL else [] ),
             ],
         }
@@ -114,9 +115,12 @@ def handle_alert(alert: dict) -> dict:
         if len(alert_log) > 500:
             alert_log.pop(0)
 
-        log.warning("FUNCTION EXECUTED | %s | severity=%s | ward=%s | %s",
-                    patient_id, severity, ward,
-                    result["notification"]["message"])
+        log.warning(
+            "FUNCTION EXECUTED | bed=%s | severity=%s | ward=%s",
+            bed_number,
+            severity,
+            ward,
+        )
 
         # Optional webhook (Slack, PagerDuty, etc.)
         if WEBHOOK_URL:
@@ -135,10 +139,13 @@ def handle_alert(alert: dict) -> dict:
         fn_latency.observe(time.perf_counter() - start)
 
 
+@app.route("/", methods=["POST"])
 @app.route("/function/cardiocare-alert-handler", methods=["POST"])
 def http_invoke():
     """HTTP invocation endpoint — OpenFaaS compatible."""
     payload = request.get_json(force=True, silent=True) or {}
+    if "ciphertext" in payload and "nonce" in payload:
+        payload = decrypt_event(json.dumps(payload).encode("utf-8"))
     result  = handle_alert(payload)
     return jsonify(result), 200
 
@@ -160,7 +167,7 @@ def kafka_consumer_thread():
             consumer = KafkaConsumer(
                 ALERT_TOPIC,
                 bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS,
-                value_deserializer=lambda m: json.loads(m.decode("utf-8")),
+                value_deserializer=decrypt_event,
                 group_id="cardiocare-alert-function",
                 auto_offset_reset="latest",
             )
@@ -176,11 +183,10 @@ def kafka_consumer_thread():
 
 
 def main():
-    start_http_server(PROMETHEUS_PORT)
-    log.info("Prometheus metrics on port %d", PROMETHEUS_PORT)
-
-    t = threading.Thread(target=kafka_consumer_thread, daemon=True)
-    t.start()
+    if not FUNCTION_MODE:
+        start_http_server(PROMETHEUS_PORT)
+        log.info("Prometheus metrics on port %d", PROMETHEUS_PORT)
+        threading.Thread(target=kafka_consumer_thread, daemon=True).start()
 
     log.info("Alert function HTTP server on port 5000")
     app.run(host="0.0.0.0", port=5000, threaded=True)

@@ -12,14 +12,29 @@
       "clientId": "cardiocare-api",
       "name": "CardioCare API",
       "enabled": true,
-      "publicClient": false,
+      "publicClient": true,
       "bearerOnly": false,
       "standardFlowEnabled": true,
       "directAccessGrantsEnabled": true,
-      "serviceAccountsEnabled": true,
-      "secret": "cardiocare-api-secret",
+      "serviceAccountsEnabled": false,
       "redirectUris": ["http://localhost:8000/*", "http://*:8000/*"],
-      "webOrigins": ["*"]
+      "webOrigins": ["http://localhost:3000"],
+      "protocolMappers": [
+        {
+          "name": "realm roles",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-realm-role-mapper",
+          "consentRequired": false,
+          "config": {
+            "multivalued": "true",
+            "userinfo.token.claim": "true",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "claim.name": "realm_access.roles",
+            "jsonType.label": "String"
+          }
+        }
+      ]
     }
   ],
   "roles": {
@@ -38,7 +53,7 @@
       "firstName": "Muhammad",
       "lastName": "Raees",
       "enabled": true,
-      "credentials": [{ "type": "password", "value": "CardioCare@2024", "temporary": false }],
+      "credentials": [{ "type": "password", "value": "CardioCare@2024", "temporary": true }],
       "realmRoles": ["cardiologist", "admin"]
     },
     {
@@ -47,7 +62,7 @@
       "firstName": "Demo",
       "lastName": "Nurse",
       "enabled": true,
-      "credentials": [{ "type": "password", "value": "Demo@1234", "temporary": false }],
+      "credentials": [{ "type": "password", "value": "Demo@1234", "temporary": true }],
       "realmRoles": ["nurse"]
     }
   ]

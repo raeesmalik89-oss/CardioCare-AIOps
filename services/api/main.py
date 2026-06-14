@@ -31,11 +31,14 @@ import os
 import json
 import time
 import logging
+import threading
 from typing import Optional
 from datetime import datetime, timezone
 from collections import deque
 
 import httpx
+from kafka import KafkaConsumer
+from kafka.errors import NoBrokersAvailable
 from fastapi import FastAPI, Depends, HTTPException, Security, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.middleware.cors import CORSMiddleware
@@ -46,6 +49,7 @@ from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExport
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+from crypto import decrypt_event
 
 logging.basicConfig(
     level=logging.INFO,
@@ -58,14 +62,26 @@ KEYCLOAK_REALM   = os.getenv("KEYCLOAK_REALM",   "cardiocare")
 KEYCLOAK_CLIENT  = os.getenv("KEYCLOAK_CLIENT_ID", "cardiocare-api")
 OPA_URL          = os.getenv("OPA_URL",          "http://opa:8181")
 JAEGER_ENDPOINT  = os.getenv("JAEGER_OTLP",      "http://jaeger:4317")
+KAFKA_BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "kafka:29092")
+VITALS_TOPIC = os.getenv("VITALS_TOPIC", "cardiac.vitals.stream")
+ANOMALY_TOPIC = os.getenv("ANOMALY_TOPIC", "cardiac.anomalies.detected")
+ALERT_TOPIC = os.getenv("ALERT_TOPIC", "cardiac.alerts.critical")
+ENABLE_API_KAFKA_CONSUMER = os.getenv("ENABLE_API_KAFKA_CONSUMER", "true").lower() == "true"
+ENABLE_TRACING = os.getenv("ENABLE_TRACING", "true").lower() == "true"
+ALLOWED_ORIGINS = [
+    origin.strip()
+    for origin in os.getenv("ALLOWED_ORIGINS", "http://localhost:3000").split(",")
+    if origin.strip()
+]
 
 # ── OpenTelemetry Tracing ─────────────────────────────────────────────────────
 provider = TracerProvider()
-try:
-    exporter = OTLPSpanExporter(endpoint=JAEGER_ENDPOINT, insecure=True)
-    provider.add_span_processor(BatchSpanProcessor(exporter))
-except Exception:
-    pass
+if ENABLE_TRACING:
+    try:
+        exporter = OTLPSpanExporter(endpoint=JAEGER_ENDPOINT, insecure=True)
+        provider.add_span_processor(BatchSpanProcessor(exporter))
+    except Exception:
+        log.exception("OpenTelemetry exporter setup failed")
 trace.set_tracer_provider(provider)
 tracer = trace.get_tracer("cardiocare-api")
 
@@ -78,6 +94,7 @@ active_patients = Gauge("api_active_patients",    "Active patient streams")
 vitals_store: dict[str, deque]   = {}  # patient_id → deque of last 100 readings
 anomaly_store: deque             = deque(maxlen=200)
 alert_store:   deque             = deque(maxlen=100)
+store_lock = threading.Lock()
 
 # ── FastAPI app ───────────────────────────────────────────────────────────────
 app = FastAPI(
@@ -90,20 +107,25 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=ALLOWED_ORIGINS,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-FastAPIInstrumentor.instrument_app(app)
+if ENABLE_TRACING:
+    FastAPIInstrumentor.instrument_app(app)
 
 bearer_scheme = HTTPBearer(auto_error=False)
 
 
 async def verify_token(credentials: Optional[HTTPAuthorizationCredentials] = Security(bearer_scheme)):
-    """Validate JWT with Keycloak and check OPA policy."""
+    """Validate a bearer token with Keycloak. Authentication fails closed."""
     if credentials is None:
-        return {"sub": "anonymous", "roles": ["read"]}
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Bearer token required",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
 
     token = credentials.credentials
     try:
@@ -114,10 +136,16 @@ async def verify_token(credentials: Optional[HTTPAuthorizationCredentials] = Sec
             )
             if resp.status_code != 200:
                 raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
-            return resp.json()
-    except httpx.ConnectError:
-        log.warning("Keycloak unavailable — running in development mode without auth")
-        return {"sub": "dev-user", "roles": ["admin"]}
+            user = resp.json()
+            realm_roles = user.get("realm_access", {}).get("roles", [])
+            user["roles"] = sorted(set(user.get("roles", []) + realm_roles))
+            return user
+    except (httpx.ConnectError, httpx.TimeoutException) as exc:
+        log.error("Keycloak validation unavailable: %s", exc)
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Authentication service unavailable",
+        ) from exc
 
 
 async def opa_check(user: dict, resource: str, action: str) -> bool:
@@ -136,9 +164,56 @@ async def opa_check(user: dict, resource: str, action: str) -> bool:
                 f"{OPA_URL}/v1/data/cardiocare/authz/allow",
                 json=payload,
             )
-            return resp.json().get("result", True)
-    except Exception:
-        return True  # fail-open in dev; fail-closed in production
+            resp.raise_for_status()
+            return resp.json().get("result", False) is True
+    except (httpx.HTTPError, ValueError) as exc:
+        log.error("OPA authorization unavailable: %s", exc)
+        return False
+
+
+async def require_access(user: dict, resource: str, action: str = "read") -> None:
+    if not await opa_check(user, resource, action):
+        raise HTTPException(status_code=403, detail="Access denied by policy")
+
+
+def consume_events() -> None:
+    """Populate the API's bounded demo stores from Kafka event topics."""
+    while True:
+        try:
+            consumer = KafkaConsumer(
+                VITALS_TOPIC,
+                ANOMALY_TOPIC,
+                ALERT_TOPIC,
+                bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS,
+                value_deserializer=decrypt_event,
+                group_id="cardiocare-api-view",
+                auto_offset_reset="latest",
+                enable_auto_commit=True,
+            )
+            log.info("API event view connected to Kafka")
+            for message in consumer:
+                event = message.value
+                with store_lock:
+                    if message.topic == VITALS_TOPIC:
+                        patient_id = event.get("patient_id")
+                        if patient_id:
+                            vitals_store.setdefault(patient_id, deque(maxlen=100)).append(event)
+                    elif message.topic == ANOMALY_TOPIC:
+                        anomaly_store.append(event)
+                    elif message.topic == ALERT_TOPIC:
+                        alert_store.append(event)
+        except NoBrokersAvailable:
+            log.warning("Kafka unavailable to API event view; retrying")
+            time.sleep(5)
+        except Exception:
+            log.exception("API Kafka consumer failed; retrying")
+            time.sleep(3)
+
+
+@app.on_event("startup")
+def start_event_consumer() -> None:
+    if ENABLE_API_KAFKA_CONSUMER:
+        threading.Thread(target=consume_events, daemon=True).start()
 
 
 # ── Routes ────────────────────────────────────────────────────────────────────
@@ -161,6 +236,7 @@ async def metrics():
 @app.get("/api/v1/patients", tags=["patients"])
 async def list_patients(user: dict = Depends(verify_token)):
     with tracer.start_as_current_span("list_patients"):
+        await require_access(user, "patients", "list")
         active_patients.set(len(vitals_store))
         api_requests.labels(method="GET", endpoint="/api/v1/patients", status="200").inc()
         return {
@@ -173,6 +249,7 @@ async def list_patients(user: dict = Depends(verify_token)):
 @app.get("/api/v1/vitals/latest", tags=["vitals"])
 async def get_latest_vitals(patient_id: Optional[str] = None, user: dict = Depends(verify_token)):
     with tracer.start_as_current_span("get_latest_vitals"):
+        await require_access(user, "vitals")
         api_requests.labels(method="GET", endpoint="/api/v1/vitals/latest", status="200").inc()
         if patient_id:
             readings = list(vitals_store.get(patient_id, []))
@@ -188,6 +265,7 @@ async def get_latest_vitals(patient_id: Optional[str] = None, user: dict = Depen
 @app.get("/api/v1/anomalies", tags=["aiops"])
 async def get_anomalies(limit: int = 50, severity: Optional[str] = None, user: dict = Depends(verify_token)):
     with tracer.start_as_current_span("get_anomalies"):
+        await require_access(user, "anomalies")
         data = list(anomaly_store)
         if severity:
             data = [a for a in data if a.get("severity") == severity.upper()]
@@ -198,15 +276,14 @@ async def get_anomalies(limit: int = 50, severity: Optional[str] = None, user: d
 @app.get("/api/v1/alerts", tags=["aiops"])
 async def get_alerts(limit: int = 20, user: dict = Depends(verify_token)):
     with tracer.start_as_current_span("get_alerts"):
-        allowed = await opa_check(user, "alerts", "read")
-        if not allowed:
-            raise HTTPException(status_code=403, detail="Access denied by policy")
+        await require_access(user, "alerts")
         api_requests.labels(method="GET", endpoint="/api/v1/alerts", status="200").inc()
         return {"alerts": list(alert_store)[-limit:], "total": len(alert_store)}
 
 
 @app.get("/api/v1/system/status", tags=["system"])
-async def system_status():
+async def system_status(user: dict = Depends(verify_token)):
+    await require_access(user, "system")
     return {
         "service": "CardioCare-AIOps",
         "version": "1.0.0",

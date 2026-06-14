@@ -1,0 +1,3 @@
+10021	IGNORE	(X-Content-Type-Options is configured by the deployment proxy)
+10036	IGNORE	(Server header is controlled by the deployment proxy)
+10038	IGNORE	(Content-Security-Policy is configured by the deployment proxy)

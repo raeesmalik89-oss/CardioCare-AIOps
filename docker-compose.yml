@@ -71,6 +71,17 @@ services:
     networks: [cardiocare-net]
     restart: unless-stopped
 
+  kafka-exporter:
+    image: danielqsj/kafka-exporter:v1.7.0
+    container_name: cardiocare-kafka-exporter
+    command:
+      - "--kafka.server=kafka:29092"
+    depends_on: [kafka]
+    ports:
+      - "9308:9308"
+    networks: [cardiocare-net]
+    restart: unless-stopped
+
   # ─── Data Producer: Simulated Cardiac Vitals ─────────────────────────────────
   producer:
     build: ./services/producer
@@ -81,6 +92,7 @@ services:
       KAFKA_TOPIC: cardiac.vitals.stream
       EMIT_INTERVAL_MS: ${EMIT_INTERVAL_MS:-1000}
       SIMULATE_ANOMALIES: ${SIMULATE_ANOMALIES:-true}
+      EVENT_ENCRYPTION_KEY: ${EVENT_ENCRYPTION_KEY:?Set EVENT_ENCRYPTION_KEY in .env}
     networks: [cardiocare-net]
     restart: unless-stopped
 
@@ -97,6 +109,7 @@ services:
       PROMETHEUS_PORT: 8001
       ANOMALY_THRESHOLD: ${ANOMALY_THRESHOLD:--0.1}
       MODEL_RETRAIN_INTERVAL: ${MODEL_RETRAIN_INTERVAL:-300}
+      EVENT_ENCRYPTION_KEY: ${EVENT_ENCRYPTION_KEY:?Set EVENT_ENCRYPTION_KEY in .env}
     ports:
       - "8001:8001"
     networks: [cardiocare-net]
@@ -112,6 +125,7 @@ services:
       ALERT_TOPIC: cardiac.alerts.critical
       WEBHOOK_URL: ${ALERT_WEBHOOK_URL:-}
       PROMETHEUS_PORT: 8002
+      EVENT_ENCRYPTION_KEY: ${EVENT_ENCRYPTION_KEY:?Set EVENT_ENCRYPTION_KEY in .env}
     ports:
       - "8002:8002"
     networks: [cardiocare-net]
@@ -124,11 +138,16 @@ services:
     depends_on: [kafka, aiops-engine]
     environment:
       KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      VITALS_TOPIC: cardiac.vitals.stream
+      ANOMALY_TOPIC: cardiac.anomalies.detected
+      ALERT_TOPIC: cardiac.alerts.critical
       KEYCLOAK_URL: http://keycloak:8080
       KEYCLOAK_REALM: cardiocare
       KEYCLOAK_CLIENT_ID: cardiocare-api
       OPA_URL: http://opa:8181
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:3000}
       PROMETHEUS_PORT: 8000
+      EVENT_ENCRYPTION_KEY: ${EVENT_ENCRYPTION_KEY:?Set EVENT_ENCRYPTION_KEY in .env}
     ports:
       - "8000:8000"
     networks: [cardiocare-net]

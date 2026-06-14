@@ -7,28 +7,59 @@ A real-time AI-powered cardiac monitoring platform built on AWS EC2 using event-
 
 ## About
 
-CardioCare-AIOps detects cardiac anomalies in real time by combining machine learning with live ECG data streams. The system processes heartbeat data through Apache Kafka, classifies arrhythmias using a trained XGBoost model, and delivers critical alerts through a serverless function — all secured with enterprise-grade encryption and access control.
+CardioCare-AIOps detects cardiac anomalies in real time by combining machine learning with simulated ECG and vital-sign streams. Apache Kafka carries AES-256-GCM encrypted event envelopes, a scikit-learn Isolation Forest detects anomalies, and critical events invoke an alert function that can run in Docker Compose or OpenFaaS.
 
 ## Highlights
 
-- XGBoost classifier trained on 87,554 real ECG heartbeats — 97.27% accuracy
-- 15 microservices running live on AWS EC2 via Docker Compose
+- Adaptive Isolation Forest anomaly detection with scheduled retraining
+- Event-driven services deployable on AWS EC2 via Docker Compose
 - Real-time streaming through Apache Kafka with AES-256-GCM encryption
-- Serverless alerting via OpenFaaS faasd — scale to zero proven
+- OpenFaaS deployment image and scale-to-zero function manifest
 - Full observability with Prometheus, Grafana, Loki, and Jaeger
-- HIPAA 45 CFR 164.312 compliant with tamper-evident audit logging
-- OWASP ZAP security scan — zero critical vulnerabilities, 64 checks passed
+- Fail-closed Keycloak authentication and OPA authorization
+- OWASP ZAP baseline scan and report generation in GitHub Actions
 
 ## Technologies Used
 
-Apache Kafka, FastAPI, XGBoost, scikit-learn, OpenFaaS, Keycloak, Open Policy Agent, Prometheus, Grafana, Loki, Jaeger, OpenTelemetry, Docker
+Apache Kafka, FastAPI, Flask, scikit-learn, OpenFaaS, Keycloak, Open Policy Agent, Prometheus, Grafana, Loki, Jaeger, OpenTelemetry, Docker
 
 ## Getting Started
 
+```bash
 git clone https://github.com/raeesmalik89-oss/CardioCare-AIOps.git
 cd CardioCare-AIOps
 cp .env.example .env
+# Generate a 32-byte AES key and place the printed value in .env:
+python -c "import base64,secrets; print(base64.urlsafe_b64encode(secrets.token_bytes(32)).decode())"
 docker compose up -d
+```
+
+Protected API routes require a Keycloak bearer token. Health and metrics
+endpoints remain available for platform probes and Prometheus.
+
+## OpenFaaS Deployment
+
+Install OpenFaaS or faasd and `faas-cli`, log in to the gateway, export
+`EVENT_ENCRYPTION_KEY`, then run:
+
+```bash
+./openfaas/deploy.sh
+```
+
+The deployment uses the OpenFaaS watchdog and includes scale-to-zero labels.
+Connect `cardiac.alerts.critical` to `cardiocare-alert-handler` with the
+OpenFaaS Kafka connector for event-driven invocation.
+
+## Security Scope
+
+- Kafka payloads are encrypted with AES-256-GCM before entering the broker.
+- Keycloak and OPA fail closed when unavailable.
+- Patient identifiers are excluded from Prometheus labels and clinical logs.
+- The repository maps controls to ISO 27001, NIST CSF and GDPR Article 32.
+- GitHub Actions produces an OWASP ZAP baseline report; scan results are
+  evidence from each workflow run rather than a hard-coded claim.
+- The bundled Keycloak users are demonstration accounts with temporary
+  passwords. Replace or remove them before any non-demo deployment.
 
 ---
 
