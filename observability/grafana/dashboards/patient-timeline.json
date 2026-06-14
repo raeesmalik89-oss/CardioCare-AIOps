@@ -7,17 +7,17 @@
   "time": {"from": "now-6h", "to": "now"},
   "templating": {
     "list": [{
-      "name": "patient_id",
+      "name": "bed_number",
       "type": "query",
       "datasource": "Prometheus",
-      "query": "label_values(cardiocare_heart_rate, patient_id)",
+      "query": "label_values(cardiocare_heart_rate, bed_number)",
       "refresh": 2,
       "current": {}
     }]
   },
   "panels": [
     {
-      "id": 1, "type": "timeseries", "title": "Heart Rate — $patient_id",
+      "id": 1, "type": "timeseries", "title": "Heart Rate — $bed_number",
       "gridPos": {"x": 0, "y": 0, "w": 12, "h": 8},
       "datasource": "Prometheus",
       "fieldConfig": {
@@ -29,10 +29,10 @@
           ]}
         }
       },
-      "targets": [{"expr": "cardiocare_heart_rate{patient_id=\"$patient_id\"}", "legendFormat": "HR"}]
+      "targets": [{"expr": "cardiocare_heart_rate{bed_number=\"$bed_number\"}", "legendFormat": "HR"}]
     },
     {
-      "id": 2, "type": "timeseries", "title": "SpO2 — $patient_id",
+      "id": 2, "type": "timeseries", "title": "SpO2 — $bed_number",
       "gridPos": {"x": 12, "y": 0, "w": 12, "h": 8},
       "datasource": "Prometheus",
       "fieldConfig": {
@@ -45,10 +45,10 @@
           ]}
         }
       },
-      "targets": [{"expr": "cardiocare_spo2{patient_id=\"$patient_id\"}", "legendFormat": "SpO2"}]
+      "targets": [{"expr": "cardiocare_spo2{bed_number=\"$bed_number\"}", "legendFormat": "SpO2"}]
     },
     {
-      "id": 3, "type": "timeseries", "title": "NEWS2 Score — $patient_id",
+      "id": 3, "type": "timeseries", "title": "NEWS2 Score — $bed_number",
       "gridPos": {"x": 0, "y": 8, "w": 12, "h": 8},
       "datasource": "Prometheus",
       "fieldConfig": {
@@ -61,21 +61,21 @@
           ]}
         }
       },
-      "targets": [{"expr": "cardiocare_news2_score{patient_id=\"$patient_id\"}", "legendFormat": "NEWS2"}]
+      "targets": [{"expr": "cardiocare_news2_score{bed_number=\"$bed_number\"}", "legendFormat": "NEWS2"}]
     },
     {
-      "id": 4, "type": "timeseries", "title": "Systolic BP — $patient_id",
+      "id": 4, "type": "timeseries", "title": "Systolic BP — $bed_number",
       "gridPos": {"x": 12, "y": 8, "w": 12, "h": 8},
       "datasource": "Prometheus",
       "fieldConfig": {"defaults": {"unit": "mmHg"}},
-      "targets": [{"expr": "cardiocare_systolic_bp{patient_id=\"$patient_id\"}", "legendFormat": "Systolic BP"}]
+      "targets": [{"expr": "cardiocare_systolic_bp{bed_number=\"$bed_number\"}", "legendFormat": "Systolic BP"}]
     },
     {
-      "id": 5, "type": "logs", "title": "Alert Log — $patient_id",
+      "id": 5, "type": "logs", "title": "Alert Log — $bed_number",
       "gridPos": {"x": 0, "y": 16, "w": 24, "h": 8},
       "datasource": "Loki",
       "options": {"dedupStrategy": "none", "showTime": true, "sortOrder": "Descending"},
-      "targets": [{"expr": "{container=~\".+\"} |= \"$patient_id\"", "legendFormat": ""}]
+      "targets": [{"expr": "{container=~\".+\"} |= \"$bed_number\"", "legendFormat": ""}]
     }
   ]
 }

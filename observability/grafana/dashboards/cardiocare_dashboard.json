@@ -25,9 +25,9 @@
       "fieldConfig": {"defaults":{"color":{"mode":"fixed","fixedColor":"orange"}}}
     },
     {
-      "id": 4, "type": "stat", "title": "XGBoost Model Accuracy",
+      "id": 4, "type": "stat", "title": "Last Isolation Forest Retrain",
       "gridPos": {"x":18,"y":0,"w":6,"h":4},
-      "targets": [{"expr":"97.27","datasource":"Prometheus"}],
+      "targets": [{"expr":"cardiocare_model_last_retrain","datasource":"Prometheus"}],
       "options": {"colorMode":"background"},
       "fieldConfig": {"defaults":{"color":{"mode":"fixed","fixedColor":"blue"},"unit":"percent"}}
     },

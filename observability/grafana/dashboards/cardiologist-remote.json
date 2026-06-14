@@ -7,10 +7,10 @@
   "time": {"from": "now-1h", "to": "now"},
   "templating": {
     "list": [{
-      "name": "patient_id",
+      "name": "bed_number",
       "type": "query",
       "datasource": "Prometheus",
-      "query": "label_values(cardiocare_heart_rate, patient_id)",
+      "query": "label_values(cardiocare_heart_rate, bed_number)",
       "refresh": 2,
       "current": {}
     }]
@@ -31,7 +31,7 @@
           ]}
         }
       },
-      "targets": [{"expr": "cardiocare_heart_rate{patient_id=\"$patient_id\"}", "legendFormat": "HR"}]
+      "targets": [{"expr": "cardiocare_heart_rate{bed_number=\"$bed_number\"}", "legendFormat": "HR"}]
     },
     {
       "id": 2, "type": "stat", "title": "SpO2",
@@ -48,7 +48,7 @@
           ]}
         }
       },
-      "targets": [{"expr": "cardiocare_spo2{patient_id=\"$patient_id\"}", "legendFormat": "SpO2"}]
+      "targets": [{"expr": "cardiocare_spo2{bed_number=\"$bed_number\"}", "legendFormat": "SpO2"}]
     },
     {
       "id": 3, "type": "stat", "title": "NEWS2 Score",
@@ -65,7 +65,7 @@
           ]}
         }
       },
-      "targets": [{"expr": "cardiocare_news2_score{patient_id=\"$patient_id\"}", "legendFormat": "NEWS2"}]
+      "targets": [{"expr": "cardiocare_news2_score{bed_number=\"$bed_number\"}", "legendFormat": "NEWS2"}]
     },
     {
       "id": 4, "type": "stat", "title": "Risk Score",
@@ -82,7 +82,7 @@
           ]}
         }
       },
-      "targets": [{"expr": "cardiocare_risk_score{patient_id=\"$patient_id\"}", "legendFormat": "Risk"}]
+      "targets": [{"expr": "cardiocare_risk_score{bed_number=\"$bed_number\"}", "legendFormat": "Risk"}]
     },
     {
       "id": 5, "type": "timeseries", "title": "Vitals Trend — Last 1 Hour",
@@ -90,18 +90,18 @@
       "datasource": "Prometheus",
       "fieldConfig": {"defaults": {"unit": "short"}},
       "targets": [
-        {"expr": "cardiocare_heart_rate{patient_id=\"$patient_id\"}", "legendFormat": "HR (bpm)"},
-        {"expr": "cardiocare_spo2{patient_id=\"$patient_id\"}", "legendFormat": "SpO2 (%)"},
-        {"expr": "cardiocare_news2_score{patient_id=\"$patient_id\"}", "legendFormat": "NEWS2"},
-        {"expr": "cardiocare_systolic_bp{patient_id=\"$patient_id\"}", "legendFormat": "Systolic BP"}
+        {"expr": "cardiocare_heart_rate{bed_number=\"$bed_number\"}", "legendFormat": "HR (bpm)"},
+        {"expr": "cardiocare_spo2{bed_number=\"$bed_number\"}", "legendFormat": "SpO2 (%)"},
+        {"expr": "cardiocare_news2_score{bed_number=\"$bed_number\"}", "legendFormat": "NEWS2"},
+        {"expr": "cardiocare_systolic_bp{bed_number=\"$bed_number\"}", "legendFormat": "Systolic BP"}
       ]
     },
     {
-      "id": 6, "type": "logs", "title": "Recent Alerts — $patient_id",
+      "id": 6, "type": "logs", "title": "Recent Alerts — $bed_number",
       "gridPos": {"x": 0, "y": 14, "w": 24, "h": 8},
       "datasource": "Loki",
       "options": {"dedupStrategy": "none", "showTime": true, "sortOrder": "Descending"},
-      "targets": [{"expr": "{container=~\".+\"} |= \"$patient_id\" |= \"ALERT\"", "legendFormat": ""}]
+      "targets": [{"expr": "{container=~\".+\"} |= \"$bed_number\" |= \"ALERT\"", "legendFormat": ""}]
     }
   ]
 }

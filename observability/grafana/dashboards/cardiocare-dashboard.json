@@ -69,7 +69,7 @@
         {
           "datasource": "Prometheus",
           "expr": "cardiocare_heart_rate",
-          "legendFormat": "{{patient_id}}"
+          "legendFormat": "{{bed_number}}"
         }
       ]
     },
@@ -82,7 +82,7 @@
         {
           "datasource": "Prometheus",
           "expr": "cardiocare_spo2",
-          "legendFormat": "{{patient_id}}"
+          "legendFormat": "{{bed_number}}"
         }
       ]
     },
@@ -95,7 +95,7 @@
         {
           "datasource": "Prometheus",
           "expr": "cardiocare_systolic_bp",
-          "legendFormat": "{{patient_id}}"
+          "legendFormat": "{{bed_number}}"
         }
       ]
     },
