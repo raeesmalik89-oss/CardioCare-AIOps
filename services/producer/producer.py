@@ -181,15 +181,15 @@ def main():
         producer.send(KAFKA_TOPIC, key=patient_id, value=encrypt_event(event))
 
         if is_anomaly:
-            log.warning("ANOMALY INJECTED | patient=%s HR=%.0f SpO2=%.0f BP=%d/%d",
-                        patient_id,
+            log.warning("ANOMALY INJECTED | bed=%s HR=%.0f SpO2=%.0f BP=%d/%d",
+                        event["bed_number"],
                         event["vitals"]["heart_rate"],
                         event["vitals"]["spo2"],
                         event["vitals"]["systolic_bp"],
                         event["vitals"]["diastolic_bp"])
         elif seq % 30 == 0:
-            log.info("Streaming | seq=%d | patient=%s | HR=%.0f | SpO2=%.0f%%",
-                     seq, patient_id,
+            log.info("Streaming | seq=%d | bed=%s | HR=%.0f | SpO2=%.0f%%",
+                     seq, event["bed_number"],
                      event["vitals"]["heart_rate"],
                      event["vitals"]["spo2"])
 

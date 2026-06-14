@@ -29,6 +29,11 @@ services:
     depends_on: [zookeeper]
     ports:
       - "9092:9092"
+    # Confidentiality model: event payloads are encrypted with AES-256-GCM at the
+    # application layer (see services/*/crypto.py) BEFORE they reach the broker, so
+    # data at rest in Kafka and in transit is ciphertext. The listeners below are
+    # PLAINTEXT only on the isolated internal cardiocare-net bridge. For broker-level
+    # TLS (SSL listeners + mTLS), provision keystores and switch the protocol map.
     environment:
       KAFKA_BROKER_ID: 1
       KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
