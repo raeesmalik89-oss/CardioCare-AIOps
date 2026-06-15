@@ -101,7 +101,7 @@
       "gridPos": {"x": 0, "y": 14, "w": 24, "h": 8},
       "datasource": "Loki",
       "options": {"dedupStrategy": "none", "showTime": true, "sortOrder": "Descending"},
-      "targets": [{"expr": "{container_name=~\".+\"} |= \"$bed_number\" |= \"ALERT\"", "legendFormat": ""}]
+      "targets": [{"expr": "{container_name=~\"cardiocare-aiops-engine|cardiocare-alert-fn\"} |= \"$bed_number\"", "legendFormat": ""}]
     }
   ]
 }
