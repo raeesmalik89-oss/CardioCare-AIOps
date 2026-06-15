@@ -1,18 +1,18 @@
 
 # CardioCare-AIOps
 
-A real-time AI-powered cardiac monitoring platform built on AWS EC2 using event-driven AIOps principles.
+A real-time AI-powered cardiac monitoring platform built on AWS EC2 (Ubuntu 26.04 LTS) using event-driven AIOps principles.
 
 ---
 
 ## About
 
-CardioCare-AIOps detects cardiac anomalies in real time by combining machine learning with simulated ECG and vital-sign streams. Apache Kafka carries AES-256-GCM encrypted event envelopes, a scikit-learn Isolation Forest detects anomalies in the live path, and critical events invoke an alert function that can run in Docker Compose or OpenFaaS. An offline XGBoost classifier trained on the MIT-BIH Arrhythmia dataset benchmarks and validates the live detector.
+CardioCare-AIOps detects cardiac anomalies in real time from real MIT-BIH ECG beats replayed as live vital-sign streams across 9 ICU beds. Apache Kafka carries AES-256-GCM encrypted event envelopes; the live AIOps engine runs a hybrid detector — a scikit-learn Isolation Forest plus clinical rules on the vitals, and an XGBoost classifier on each real ECG beat — and critical events invoke a serverless alert function (OpenFaaS faasd). XGBoost is trained offline on the MIT-BIH Arrhythmia dataset (97.27%) and serves live in the ensemble.
 
 ## Highlights
 
-- Adaptive Isolation Forest anomaly detection with scheduled retraining (live path)
-- Offline XGBoost benchmark on MIT-BIH (87,554 beats, 97.27% accuracy, AUC-ROC 0.9927)
+- Adaptive Isolation Forest anomaly detection with scheduled retraining (live)
+- Live XGBoost ECG classifier, trained on MIT-BIH (87,554 beats, 97.27% accuracy, AUC-ROC 0.9927)
 - Event-driven services deployable on AWS EC2 via Docker Compose
 - Real-time streaming through Apache Kafka with AES-256-GCM encryption
 - OpenFaaS deployment image and scale-to-zero function manifest
@@ -26,10 +26,10 @@ Apache Kafka, FastAPI, Flask, scikit-learn, XGBoost, OpenFaaS, Keycloak, Open Po
 
 ## Machine Learning Models
 
-CardioCare-AIOps uses a hybrid detection strategy:
+CardioCare-AIOps uses a hybrid, fully-live detection strategy:
 
-- **Live path — Isolation Forest + clinical rules** (`services/aiops-engine`): unsupervised anomaly scoring on streaming vitals, with clinical rules overriding the model for life-threatening values and routing severity (CRITICAL / HIGH / MEDIUM / LOW). Retrains on a schedule from real observations.
-- **Offline benchmark — XGBoost** (`services/ml-trainer`): a supervised classifier trained on the MIT-BIH Arrhythmia dataset (5 AAMI classes, 187 features) that benchmarks and validates the live detector.
+- **Vitals path — Isolation Forest + clinical rules** (`services/aiops-engine`): unsupervised anomaly scoring on the 7 streaming vitals, with clinical rules overriding the model for life-threatening values and routing severity (CRITICAL / HIGH / MEDIUM / LOW). Retrains on a schedule from real observations.
+- **ECG-beat path — XGBoost** (trained by `services/ml-trainer`, served by the engine): a supervised classifier that labels every real ECG beat into 5 AAMI classes (187 features), trained on the MIT-BIH Arrhythmia dataset. It runs **live** in the ensemble — its ~97% live accuracy matches the offline test set.
 
 | Metric | Value |
 |---|---|
