@@ -48,6 +48,7 @@ from opentelemetry import trace
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
+from opentelemetry.sdk.resources import Resource
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 from crypto import decrypt_event
 
@@ -75,7 +76,8 @@ ALLOWED_ORIGINS = [
 ]
 
 # ── OpenTelemetry Tracing ─────────────────────────────────────────────────────
-provider = TracerProvider()
+# service.name makes traces appear as "cardiocare-api" in Jaeger (not unknown_service)
+provider = TracerProvider(resource=Resource.create({"service.name": "cardiocare-api"}))
 if ENABLE_TRACING:
     try:
         exporter = OTLPSpanExporter(endpoint=JAEGER_ENDPOINT, insecure=True)
