@@ -210,7 +210,9 @@ services:
       - ./observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - prometheus-data:/prometheus
     ports:
-      - "9090:9090"
+      # Host 9091 (9090 is used by faasd's bundled Prometheus on EC2). Grafana scrapes
+      # over the internal network (prometheus:9090), so this only changes external access.
+      - "${PROMETHEUS_HOST_PORT:-9091}:9090"
     networks: [cardiocare-net]
     restart: unless-stopped
 
