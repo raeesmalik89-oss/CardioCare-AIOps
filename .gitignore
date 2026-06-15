@@ -17,3 +17,5 @@ venv/
 certs/
 *.tgz
 services/aiops-engine/detector.py.save
+
+docs/EVIDENCE.md
