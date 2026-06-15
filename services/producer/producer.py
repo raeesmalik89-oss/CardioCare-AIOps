@@ -56,7 +56,8 @@ SIMULATE_ANOMALIES = os.getenv("SIMULATE_ANOMALIES", "true").lower() == "true"
 DATA_SOURCE = os.getenv("DATA_SOURCE", "real").lower()
 MITBIH_PATH = os.getenv("MITBIH_PATH", "/data/mitbih_test.csv")
 
-PATIENT_IDS = ["PT-001", "PT-002", "PT-003", "PT-004", "PT-005"]
+PATIENT_IDS = ["PT-001", "PT-002", "PT-003", "PT-004", "PT-005",
+               "PT-006", "PT-007", "PT-008", "PT-009"]
 
 # MIT-BIH AAMI classes (column 187 of each row)
 CLASS_NAMES = {0: "Normal", 1: "Supraventricular", 2: "Ventricular",
@@ -91,6 +92,10 @@ BED_MAP = {
     "PT-003": "BED-03",
     "PT-004": "BED-04",
     "PT-005": "BED-05",
+    "PT-006": "BED-06",
+    "PT-007": "BED-07",
+    "PT-008": "BED-08",
+    "PT-009": "BED-09",
 }
 
 
