@@ -6,16 +6,27 @@ Topic   : Topic 7 — Serverless Architectures with Event-Driven AIOps,
           Observability and Security Integration
 
 Purpose:
-    Generates a continuous stream of simulated patient vitals and ECG samples,
-    publishing each event to the Kafka topic `cardiac.vitals.stream`.
-    ~5% of events are deliberately anomalous (tachycardia, hypoxemia, hypertensive
-    crisis) to exercise the downstream AIOps anomaly-detection engine.
+    Streams cardiac events to the Kafka topic `cardiac.vitals.stream`.
+
+    Two data modes (DATA_SOURCE env):
+      - "real" (default): replays REAL ECG heartbeats from the MIT-BIH
+        Arrhythmia dataset (Kaggle: shayanfazeli/heartbeat). Each event carries
+        the real 187-sample beat plus its ground-truth arrhythmia label, and a
+        vitals layer derived from that label so the NEWS2 / IsolationForest /
+        dashboard path still works. The downstream aiops-engine classifies the
+        real beat live with the trained XGBoost model.
+      - "simulated": generates synthetic vitals (used when the MIT-BIH CSV is
+        not mounted, e.g. CI / quick local runs) so the demo never breaks.
+
+    HONEST NOTE: no public dataset pairs an ECG waveform with matching vitals
+    for the same patient-moment. The ECG beats are REAL (MIT-BIH); the vitals
+    are derived from the real beat's label. We do not claim the vitals are
+    recorded from the same patient as the beat.
 
 Design rationale:
-    Using a dedicated producer service decouples data ingestion from processing,
-    which is a core principle of event-driven serverless architectures.  In a
-    production deployment this service would be replaced by real IoT device
-    connectors (HL7 FHIR, MQTT bridge) — the downstream pipeline is identical.
+    A dedicated producer decouples ingestion from processing — a core
+    event-driven serverless principle. In production this is replaced by real
+    device connectors (HL7 FHIR / MQTT); the downstream pipeline is identical.
 """
 
 import os
@@ -25,6 +36,7 @@ import random
 import logging
 import math
 from datetime import datetime, timezone
+
 from kafka import KafkaProducer
 from kafka.errors import NoBrokersAvailable
 from crypto import encrypt_event
@@ -40,7 +52,15 @@ KAFKA_TOPIC = os.getenv("KAFKA_TOPIC", "cardiac.vitals.stream")
 EMIT_INTERVAL_MS = int(os.getenv("EMIT_INTERVAL_MS", "1000"))
 SIMULATE_ANOMALIES = os.getenv("SIMULATE_ANOMALIES", "true").lower() == "true"
 
+# Data mode: "real" replays MIT-BIH beats; "simulated" generates synthetic vitals.
+DATA_SOURCE = os.getenv("DATA_SOURCE", "real").lower()
+MITBIH_PATH = os.getenv("MITBIH_PATH", "/data/mitbih_test.csv")
+
 PATIENT_IDS = ["PT-001", "PT-002", "PT-003", "PT-004", "PT-005"]
+
+# MIT-BIH AAMI classes (column 187 of each row)
+CLASS_NAMES = {0: "Normal", 1: "Supraventricular", 2: "Ventricular",
+               3: "Fusion", 4: "Unclassifiable"}
 
 # Normal physiological ranges
 NORMAL = {
@@ -53,16 +73,6 @@ NORMAL = {
     "respiratory_rate": (12, 20),
 }
 
-# ICU bed assignment — maps patient ID to physical bed number
-BED_MAP = {
-    "PT-001": "BED-01",
-    "PT-002": "BED-02",
-    "PT-003": "BED-03",
-    "PT-004": "BED-04",
-    "PT-005": "BED-05",
-}
-
-
 # Anomalous ranges (cardiac emergency)
 ANOMALY = {
     "heart_rate":     [(30, 45), (160, 200)],  # bradycardia or tachycardia
@@ -74,20 +84,29 @@ ANOMALY = {
     "respiratory_rate": [(30, 45), (4, 8)],
 }
 
-# Simulated ECG waveform (P-QRS-T simplified)
+# ICU bed assignment — maps patient ID to physical bed number
+BED_MAP = {
+    "PT-001": "BED-01",
+    "PT-002": "BED-02",
+    "PT-003": "BED-03",
+    "PT-004": "BED-04",
+    "PT-005": "BED-05",
+}
+
+
 def ecg_waveform(t: float, amplitude: float = 1.0) -> float:
-    """Generate a simplified ECG waveform value at time t."""
+    """Simplified P-QRS-T ECG value (used only in simulated fallback)."""
     cycle = t % 1.0
-    if 0.1 <= cycle < 0.15:      # P wave
+    if 0.1 <= cycle < 0.15:
         return amplitude * 0.25 * math.sin(math.pi * (cycle - 0.1) / 0.05)
-    elif 0.3 <= cycle < 0.35:    # QRS complex
+    elif 0.3 <= cycle < 0.35:
         if cycle < 0.32:
             return -amplitude * 0.15
         elif cycle < 0.33:
             return amplitude * 1.0
         else:
             return -amplitude * 0.25
-    elif 0.4 <= cycle < 0.55:    # T wave
+    elif 0.4 <= cycle < 0.55:
         return amplitude * 0.35 * math.sin(math.pi * (cycle - 0.4) / 0.15)
     return 0.0
 
@@ -104,39 +123,91 @@ def sample_anomaly() -> dict:
     return vitals
 
 
-def build_event(patient_id: str, is_anomaly: bool, seq: int) -> dict:
-    t = time.time()
-    vitals = sample_anomaly() if is_anomaly else sample_normal()
-    ecg_val = round(ecg_waveform(t % 1.0, vitals["ecg_amplitude"]), 4)
+def vitals_for_label(label: int) -> dict:
+    """Derive a plausible vitals layer from the REAL beat's arrhythmia label.
+
+    Label 0 (Normal) -> normal vitals.
+    Labels 1-4 (arrhythmias) -> anomalous vitals, so NEWS2 / IsolationForest
+    and the dashboards reflect the real beat being abnormal.
+    """
+    return sample_normal() if label == 0 else sample_anomaly()
+
+
+def compute_news2(vitals: dict) -> int:
+    return (
+        (3 if vitals["heart_rate"] >= 131 or vitals["heart_rate"] <= 40 else
+         2 if vitals["heart_rate"] >= 111 else
+         1 if vitals["heart_rate"] >= 91 else 0) +
+        (3 if vitals["spo2"] <= 91 else
+         2 if vitals["spo2"] <= 93 else
+         1 if vitals["spo2"] <= 95 else 0) +
+        (3 if vitals["systolic_bp"] <= 90 else
+         2 if vitals["systolic_bp"] <= 100 else
+         1 if vitals["systolic_bp"] <= 110 else
+         3 if vitals["systolic_bp"] >= 220 else 0) +
+        (3 if vitals["respiratory_rate"] >= 25 else
+         2 if vitals["respiratory_rate"] >= 21 else
+         1 if vitals["respiratory_rate"] <= 11 else 0)
+    )
+
+
+def load_mitbih_beats(path: str):
+    """Load real MIT-BIH beats: returns (beats list[187 floats], labels list[int])
+    or None if the CSV is unavailable (caller falls back to simulation)."""
+    try:
+        import pandas as pd
+        df = pd.read_csv(path, header=None)
+        beats = df.iloc[:, :187].values.astype(float).tolist()
+        labels = df.iloc[:, 187].values.astype(int).tolist()
+        log.info("Loaded %d REAL MIT-BIH beats from %s", len(beats), path)
+        return beats, labels
+    except Exception as exc:  # noqa: BLE001 - any failure -> simulation fallback
+        log.warning("Could not load MIT-BIH data (%s): %s", path, exc)
+        return None
+
+
+def build_real_event(beats, labels, seq: int) -> dict:
+    """Build an event from a REAL MIT-BIH beat + label-derived vitals."""
+    idx = random.randrange(len(beats))
+    beat = [round(float(x), 4) for x in beats[idx]]
+    label = int(labels[idx])
+    label_name = CLASS_NAMES.get(label, "Unknown")
+    patient_id = PATIENT_IDS[idx % len(PATIENT_IDS)]
+    vitals = vitals_for_label(label)
     return {
         "event_id": f"{patient_id}-{seq:08d}",
         "patient_id": patient_id,
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "sequence": seq,
         "vitals": vitals,
-        "ecg_sample": ecg_val,
+        "ecg_beat": beat,                 # REAL 187-sample MIT-BIH heartbeat
+        "true_label": label,              # ground-truth arrhythmia class (0-4)
+        "true_label_name": label_name,
+        "ecg_sample": beat[len(beat) // 2],
         "device_id": f"DEVICE-{patient_id}",
-
-        # ICU location fields
         "ward": "ICU",
         "bed_number": BED_MAP[patient_id],
-        # NEWS2 early warning score — calculated from live vitals
-        "news2_score": (
-            (3 if vitals["heart_rate"] >= 131 or vitals["heart_rate"] <= 40 else
-             2 if vitals["heart_rate"] >= 111 else
-             1 if vitals["heart_rate"] >= 91 else 0) +
-            (3 if vitals["spo2"] <= 91 else
-             2 if vitals["spo2"] <= 93 else
-             1 if vitals["spo2"] <= 95 else 0) +
-            (3 if vitals["systolic_bp"] <= 90 else
-             2 if vitals["systolic_bp"] <= 100 else
-             1 if vitals["systolic_bp"] <= 110 else
-             3 if vitals["systolic_bp"] >= 220 else 0) +
-            (3 if vitals["respiratory_rate"] >= 25 else
-             2 if vitals["respiratory_rate"] >= 21 else
-             1 if vitals["respiratory_rate"] <= 11 else 0)
-        ),
+        "news2_score": compute_news2(vitals),
+        "data_source": "mitbih",
+    }
 
+
+def build_simulated_event(patient_id: str, is_anomaly: bool, seq: int) -> dict:
+    """Fallback event with synthetic vitals (no real beat available)."""
+    t = time.time()
+    vitals = sample_anomaly() if is_anomaly else sample_normal()
+    return {
+        "event_id": f"{patient_id}-{seq:08d}",
+        "patient_id": patient_id,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "sequence": seq,
+        "vitals": vitals,
+        "ecg_sample": round(ecg_waveform(t % 1.0, vitals["ecg_amplitude"]), 4),
+        "device_id": f"DEVICE-{patient_id}",
+        "ward": "ICU",
+        "bed_number": BED_MAP[patient_id],
+        "news2_score": compute_news2(vitals),
+        "data_source": "simulated",
         "is_simulated_anomaly": is_anomaly,
     }
 
@@ -160,38 +231,40 @@ def wait_for_kafka(bootstrap_servers: str, retries: int = 30) -> KafkaProducer:
 
 def main():
     log.info("CardioCare-AIOps Producer starting...")
-    log.info("Topic: %s | Interval: %dms | Anomaly injection: %s",
-             KAFKA_TOPIC, EMIT_INTERVAL_MS, SIMULATE_ANOMALIES)
 
+    real = load_mitbih_beats(MITBIH_PATH) if DATA_SOURCE == "real" else None
+    if real:
+        beats, labels = real
+        log.info("DATA MODE: REAL MIT-BIH beats (%d) -> %s", len(beats), KAFKA_TOPIC)
+    else:
+        beats = labels = None
+        log.info("DATA MODE: SIMULATED vitals -> %s", KAFKA_TOPIC)
+
+    log.info("Interval: %dms | Anomaly injection: %s", EMIT_INTERVAL_MS, SIMULATE_ANOMALIES)
     producer = wait_for_kafka(KAFKA_BOOTSTRAP_SERVERS)
     seq = 0
-    anomaly_counter = 0
 
     while True:
-        patient_id = random.choice(PATIENT_IDS)
+        if beats:
+            event = build_real_event(beats, labels, seq)
+            is_abnormal = event["true_label"] != 0
+        else:
+            patient_id = random.choice(PATIENT_IDS)
+            is_abnormal = SIMULATE_ANOMALIES and (random.random() < 0.05)
+            event = build_simulated_event(patient_id, is_abnormal, seq)
 
-        # Inject anomaly roughly every 20 events per patient if enabled
+        producer.send(KAFKA_TOPIC, key=event["patient_id"], value=encrypt_event(event))
 
-        is_anomaly = SIMULATE_ANOMALIES and (random.random() < 0.05)
-
-        if is_anomaly:
-            anomaly_counter += 1
-
-        event = build_event(patient_id, is_anomaly, seq)
-        producer.send(KAFKA_TOPIC, key=patient_id, value=encrypt_event(event))
-
-        if is_anomaly:
-            log.warning("ANOMALY INJECTED | bed=%s HR=%.0f SpO2=%.0f BP=%d/%d",
+        if is_abnormal:
+            log.warning("ABNORMAL | bed=%s | label=%s | HR=%.0f SpO2=%.0f",
                         event["bed_number"],
+                        event.get("true_label_name", "simulated"),
                         event["vitals"]["heart_rate"],
-                        event["vitals"]["spo2"],
-                        event["vitals"]["systolic_bp"],
-                        event["vitals"]["diastolic_bp"])
+                        event["vitals"]["spo2"])
         elif seq % 30 == 0:
-            log.info("Streaming | seq=%d | bed=%s | HR=%.0f | SpO2=%.0f%%",
-                     seq, event["bed_number"],
-                     event["vitals"]["heart_rate"],
-                     event["vitals"]["spo2"])
+            log.info("Streaming | seq=%d | bed=%s | src=%s | HR=%.0f | SpO2=%.0f%%",
+                     seq, event["bed_number"], event["data_source"],
+                     event["vitals"]["heart_rate"], event["vitals"]["spo2"])
 
         seq += 1
         time.sleep(EMIT_INTERVAL_MS / 1000.0)

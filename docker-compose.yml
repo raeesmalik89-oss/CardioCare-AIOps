@@ -97,7 +97,13 @@ services:
       KAFKA_TOPIC: cardiac.vitals.stream
       EMIT_INTERVAL_MS: ${EMIT_INTERVAL_MS:-1000}
       SIMULATE_ANOMALIES: ${SIMULATE_ANOMALIES:-true}
+      # DATA_SOURCE=real replays real MIT-BIH beats from /data; "simulated" falls back
+      DATA_SOURCE: ${DATA_SOURCE:-real}
+      MITBIH_PATH: /data/mitbih_test.csv
       EVENT_ENCRYPTION_KEY: ${EVENT_ENCRYPTION_KEY:?Set EVENT_ENCRYPTION_KEY in .env}
+    volumes:
+      # Real MIT-BIH CSVs (not in git). Empty if absent -> producer falls back to simulated.
+      - ${MITBIH_DATA_DIR:-./data}:/data:ro
     networks: [cardiocare-net]
     restart: unless-stopped
 
@@ -114,7 +120,12 @@ services:
       PROMETHEUS_PORT: 8001
       ANOMALY_THRESHOLD: ${ANOMALY_THRESHOLD:--0.1}
       MODEL_RETRAIN_INTERVAL: ${MODEL_RETRAIN_INTERVAL:-300}
+      # Trained XGBoost model for live ECG-beat classification (read-only mount below)
+      XGBOOST_MODEL_PATH: /models/xgboost_ecg_classifier.json
       EVENT_ENCRYPTION_KEY: ${EVENT_ENCRYPTION_KEY:?Set EVENT_ENCRYPTION_KEY in .env}
+    volumes:
+      # Committed model dir; if model absent the engine degrades to IsolationForest only
+      - ./models:/models:ro
     ports:
       - "8001:8001"
     networks: [cardiocare-net]

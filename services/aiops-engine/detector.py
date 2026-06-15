@@ -6,26 +6,27 @@ Topic   : Topic 7 — Serverless Architectures with Event-Driven AIOps,
           Observability and Security Integration
 
 Purpose:
-    Consumes the `cardiac.vitals.stream` Kafka topic in real time, extracts a
-    seven-dimensional feature vector from each event, and scores it with an
-    Isolation Forest model.  Events whose anomaly score falls below the
-    configurable threshold are classified by clinical severity and forwarded
-    to `cardiac.anomalies.detected`; CRITICAL events additionally trigger the
-    serverless alert function via `cardiac.alerts.critical`.
+    Consumes `cardiac.vitals.stream` in real time and applies a hybrid detector:
 
-Algorithm choice — why Isolation Forest:
-    Cardiac monitoring data is predominantly normal (low contamination ~5%).
-    Isolation Forest excels in this regime because it isolates anomalies rather
-    than profiling the entire distribution.  It operates without labelled
-    anomaly examples, which suits real clinical deployments where labelled
-    cardiac-emergency datasets are scarce.  The model retrains automatically
-    every MODEL_RETRAIN_INTERVAL seconds on the sliding observation buffer,
-    adapting to patient-specific baseline drift.
+      1. XGBoost (supervised) — classifies the REAL 187-sample MIT-BIH ECG beat
+         carried by each event into one of 5 AAMI arrhythmia classes. This is
+         the same model benchmarked offline (services/ml-trainer, 97.27%).
+      2. Isolation Forest (unsupervised) — scores the 7-dim vitals vector for
+         outliers, with scheduled retraining on the live buffer.
+      3. Clinical rules — override both for life-threatening vitals.
 
-AIOps integration:
-    The engine closes the AIOps loop: it not only *detects* anomalies but
-    *automates the response* by publishing to downstream topics, embodying the
-    event-driven serverless pattern required by Topic 7.
+    Ensemble = "xgboost + isolationforest + rules". Anomalies are forwarded to
+    `cardiac.anomalies.detected`; CRITICAL events trigger the serverless alert
+    function via `cardiac.alerts.critical`.
+
+    If the XGBoost model is not mounted (e.g. CI), the engine degrades
+    gracefully to IsolationForest + rules so the demo never breaks.
+
+Algorithm rationale:
+    Isolation Forest suits the streaming regime (mostly-normal, no labels) and
+    adapts to baseline drift; XGBoost adds supervised arrhythmia classification
+    validated on labelled MIT-BIH data. Together they cover unknown anomalies
+    and known arrhythmia morphology.
 """
 
 import os
@@ -57,9 +58,16 @@ ALERT_TOPIC   = os.getenv("ALERT_TOPIC",   "cardiac.alerts.critical")
 PROMETHEUS_PORT       = int(os.getenv("PROMETHEUS_PORT", "8001"))
 ANOMALY_THRESHOLD     = float(os.getenv("ANOMALY_THRESHOLD", "-0.1"))
 MODEL_RETRAIN_INTERVAL = int(os.getenv("MODEL_RETRAIN_INTERVAL", "300"))
+XGBOOST_MODEL_PATH = os.getenv("XGBOOST_MODEL_PATH", "/models/xgboost_ecg_classifier.json")
 
 FEATURES = ["heart_rate", "systolic_bp", "diastolic_bp", "spo2",
             "ecg_amplitude", "temperature", "respiratory_rate"]
+
+# MIT-BIH AAMI classes
+CLASS_NAMES = {0: "Normal", 1: "Supraventricular", 2: "Ventricular",
+               3: "Fusion", 4: "Unclassifiable"}
+# Classes that represent life-threatening morphology
+CRITICAL_CLASSES = {2, 3}   # Ventricular, Fusion
 
 # ── Prometheus Metrics ────────────────────────────────────────────────────────
 events_processed   = Counter("cardiocare_events_total",    "Total vitals events processed")
@@ -69,6 +77,10 @@ model_score        = Gauge("cardiocare_model_score",        "Latest anomaly scor
 model_retrain_ts   = Gauge("cardiocare_model_last_retrain", "Last model retrain timestamp")
 processing_latency = Histogram("cardiocare_processing_seconds", "Event processing latency",
                                 buckets=[0.001, 0.005, 0.01, 0.05, 0.1, 0.5])
+xgb_predictions    = Counter("cardiocare_xgboost_predictions_total",
+                             "XGBoost ECG beat classifications", ["predicted_class"])
+xgb_correct        = Counter("cardiocare_xgboost_correct_total",
+                             "XGBoost predictions matching the ground-truth label")
 current_hr        = Gauge("cardiocare_heart_rate",   "Latest heart rate",  ["bed_number"])
 current_spo2      = Gauge("cardiocare_spo2",          "Latest SpO2",        ["bed_number"])
 current_systolic  = Gauge("cardiocare_systolic_bp",   "Latest systolic BP", ["bed_number"])
@@ -76,31 +88,39 @@ current_news2     = Gauge("cardiocare_news2_score",   "Latest NEWS2 score", ["be
 current_risk      = Gauge("cardiocare_risk_score",    "Latest risk score",  ["bed_number"])
 
 
+def load_xgboost_model(path: str):
+    """Load the trained XGBoost classifier, or None if unavailable (fallback)."""
+    try:
+        import xgboost as xgb
+        model = xgb.XGBClassifier()
+        model.load_model(path)
+        log.info("XGBoost model loaded from %s (live ECG classification ENABLED)", path)
+        return model
+    except Exception as exc:  # noqa: BLE001 - any failure -> IsolationForest-only
+        log.warning("XGBoost model unavailable (%s): %s — running IsolationForest only", path, exc)
+        return None
+
+
 class AIOpsEngine:
     def __init__(self):
         self.model = IsolationForest(
-            n_estimators=100,
-            contamination=0.05,
-            random_state=42,
-            warm_start=False,
+            n_estimators=100, contamination=0.05, random_state=42, warm_start=False,
         )
         self.training_buffer: deque = deque(maxlen=2000)
         self.model_trained = False
         self.model_lock = threading.Lock()
+        self.xgb = load_xgboost_model(XGBOOST_MODEL_PATH)
         self._bootstrap_model()
 
     def _bootstrap_model(self):
-        """Pre-train on synthetic normal data so model is ready immediately."""
-        log.info("Bootstrapping model with synthetic normal data...")
+        """Pre-train IsolationForest on synthetic normal vitals so it's ready now."""
+        log.info("Bootstrapping IsolationForest with synthetic normal data...")
         rng = np.random.default_rng(42)
         synthetic = np.column_stack([
-            rng.uniform(60,  100, 500),   # heart_rate
-            rng.uniform(110, 130, 500),   # systolic_bp
-            rng.uniform(70,  85,  500),   # diastolic_bp
-            rng.uniform(95,  100, 500),   # spo2
-            rng.uniform(0.8, 1.2, 500),   # ecg_amplitude
-            rng.uniform(36.1, 37.2, 500), # temperature
-            rng.uniform(12,  20,  500),   # respiratory_rate
+            rng.uniform(60,  100, 500), rng.uniform(110, 130, 500),
+            rng.uniform(70,  85,  500), rng.uniform(95,  100, 500),
+            rng.uniform(0.8, 1.2, 500), rng.uniform(36.1, 37.2, 500),
+            rng.uniform(12,  20,  500),
         ])
         with self.model_lock:
             self.model.fit(synthetic)
@@ -108,6 +128,7 @@ class AIOpsEngine:
         model_retrain_ts.set(time.time())
         log.info("Bootstrap model trained on %d synthetic samples.", len(synthetic))
 
+    # ── Vitals path (IsolationForest) ──────────────────────────────────────────
     def extract_features(self, event: dict) -> np.ndarray:
         v = event["vitals"]
         return np.array([[v.get(f, 0.0) for f in FEATURES]])
@@ -128,25 +149,42 @@ class AIOpsEngine:
             return
         data = np.array(list(self.training_buffer))
         with self.model_lock:
-            self.model = IsolationForest(
-                n_estimators=100,
-                contamination=0.05,
-                random_state=42,
-            )
+            self.model = IsolationForest(n_estimators=100, contamination=0.05, random_state=42)
             self.model.fit(data)
             self.model_trained = True
         model_retrain_ts.set(time.time())
-        log.info("Model retrained on %d real observations.", len(data))
+        log.info("IsolationForest retrained on %d real observations.", len(data))
 
-    def classify_severity(self, vitals: dict, score: float) -> str:
+    # ── ECG beat path (XGBoost) ──────────────────────────────────────────────
+    def classify_beat(self, beat):
+        """Classify a real 187-sample ECG beat. Returns (class:int, confidence:float)
+        or (None, None) if XGBoost is unavailable or the beat is malformed."""
+        if self.xgb is None or not beat or len(beat) < 187:
+            return None, None
+        try:
+            x = np.array(beat[:187], dtype=np.float32).reshape(1, -1)
+            proba = self.xgb.predict_proba(x)[0]
+            cls = int(np.argmax(proba))
+            return cls, float(proba[cls])
+        except Exception as exc:  # noqa: BLE001
+            log.warning("XGBoost classification failed: %s", exc)
+            return None, None
+
+    # ── Ensemble severity ────────────────────────────────────────────────────
+    def classify_severity(self, vitals: dict, score: float, xgb_class) -> str:
         hr = vitals.get("heart_rate", 70)
         spo2 = vitals.get("spo2", 98)
         sbp = vitals.get("systolic_bp", 120)
+        # Clinical rules + supervised arrhythmia morphology both escalate to CRITICAL
         if spo2 < 85 or hr > 180 or hr < 35 or sbp > 185 or sbp < 75:
             return "CRITICAL"
+        if xgb_class in CRITICAL_CLASSES:
+            return "CRITICAL"
+        if xgb_class == 1:           # Supraventricular
+            return "HIGH"
         if score < -0.3:
             return "HIGH"
-        if score < ANOMALY_THRESHOLD:
+        if xgb_class == 4 or score < ANOMALY_THRESHOLD:   # Unclassifiable / IF outlier
             return "MEDIUM"
         return "LOW"
 
@@ -189,13 +227,14 @@ def main():
     log.info("Prometheus metrics on port %d", PROMETHEUS_PORT)
 
     engine = AIOpsEngine()
+    detector_name = ("ensemble:xgboost+isolationforest+rules"
+                     if engine.xgb is not None else "isolationforest+rules")
     producer, consumer = wait_for_kafka(KAFKA_BOOTSTRAP_SERVERS)
 
-    # Background retraining thread
     t = threading.Thread(target=retrain_loop, args=(engine,), daemon=True)
     t.start()
 
-    log.info("Listening on topic: %s", INPUT_TOPIC)
+    log.info("Listening on topic: %s | detector=%s", INPUT_TOPIC, detector_name)
 
     for message in consumer:
         start = time.perf_counter()
@@ -205,25 +244,36 @@ def main():
             vitals = event.get("vitals", {})
             bed_number  = event.get("bed_number", "UNKNOWN")
             news2_score = event.get("news2_score", 0)
+
+            # Vitals path (IsolationForest)
             features = engine.extract_features(event)
             engine.add_to_buffer(features)
-
             score = engine.score(features)
             prediction = engine.predict(features)
-
             model_score.set(score)
             events_processed.inc()
 
-            # Update per-patient gauges
+            # ECG beat path (XGBoost) on the REAL beat, if present
+            xgb_class, xgb_conf = engine.classify_beat(event.get("ecg_beat"))
+            if xgb_class is not None:
+                xgb_predictions.labels(predicted_class=CLASS_NAMES[xgb_class]).inc()
+                true_label = event.get("true_label")
+                if true_label is not None and int(true_label) == xgb_class:
+                    xgb_correct.inc()
+
+            # Per-bed gauges
             current_hr.labels(bed_number=bed_number).set(vitals.get("heart_rate", 0))
             current_spo2.labels(bed_number=bed_number).set(vitals.get("spo2", 0))
             current_systolic.labels(bed_number=bed_number).set(vitals.get("systolic_bp", 0))
             current_news2.labels(bed_number=bed_number).set(news2_score)
             current_risk.labels(bed_number=bed_number).set(round(abs(score), 4))
 
-            if prediction == -1 or score < ANOMALY_THRESHOLD:
+            # Anomaly if vitals outlier OR a non-Normal arrhythmia class
+            vitals_anomaly = prediction == -1 or score < ANOMALY_THRESHOLD
+            beat_anomaly = xgb_class is not None and xgb_class != 0
+            if vitals_anomaly or beat_anomaly:
                 anomalies_detected.inc()
-                severity = engine.classify_severity(vitals, score)
+                severity = engine.classify_severity(vitals, score, xgb_class)
 
                 anomaly_event = {
                     "event_id": event.get("event_id"),
@@ -233,18 +283,19 @@ def main():
                     "severity": severity,
                     "vitals": vitals,
                     "ward": event.get("ward", "UNKNOWN"),
-                    "model": "IsolationForest",
+                    "model": detector_name,
                     "features_used": FEATURES,
+                    "ecg_class": CLASS_NAMES.get(xgb_class) if xgb_class is not None else None,
+                    "ecg_confidence": round(xgb_conf, 4) if xgb_conf is not None else None,
+                    "true_label_name": event.get("true_label_name"),
                 }
                 producer.send(ANOMALY_TOPIC, key=patient_id, value=encrypt_event(anomaly_event))
 
-                log.warning("ANOMALY | bed=%s | severity=%s | score=%.4f | "
-                            "HR=%.0f | SpO2=%.0f%% | BP=%d/%d",
-                            bed_number, severity, score,
-                            vitals.get("heart_rate", 0),
-                            vitals.get("spo2", 0),
-                            vitals.get("systolic_bp", 0),
-                            vitals.get("diastolic_bp", 0))
+                log.warning("ANOMALY | bed=%s | severity=%s | ecg=%s(%.2f) | score=%.4f | HR=%.0f SpO2=%.0f",
+                            bed_number, severity,
+                            CLASS_NAMES.get(xgb_class, "n/a"),
+                            xgb_conf or 0.0, score,
+                            vitals.get("heart_rate", 0), vitals.get("spo2", 0))
 
                 if severity == "CRITICAL":
                     critical_alerts.inc()
@@ -255,17 +306,14 @@ def main():
                         "triggered_function": "alert-handler-v1",
                     }
                     producer.send(ALERT_TOPIC, key=patient_id, value=encrypt_event(alert))
-                    log.error("CRITICAL ALERT FIRED | bed=%s | HR=%.0f | SpO2=%.0f%%",
-                              bed_number,
-                              vitals.get("heart_rate", 0),
-                              vitals.get("spo2", 0))
+                    log.error("CRITICAL ALERT FIRED | bed=%s | ecg=%s | HR=%.0f SpO2=%.0f",
+                              bed_number, CLASS_NAMES.get(xgb_class, "n/a"),
+                              vitals.get("heart_rate", 0), vitals.get("spo2", 0))
 
         except Exception as exc:
             log.exception("Error processing event: %s", exc)
-
         finally:
-            elapsed = time.perf_counter() - start
-            processing_latency.observe(elapsed)
+            processing_latency.observe(time.perf_counter() - start)
 
 
 if __name__ == "__main__":
