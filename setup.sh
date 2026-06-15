@@ -1,7 +1,7 @@
 #!/bin/bash
 # CardioCare-AIOps — EC2 Setup Script
 # Run once after cloning on a fresh EC2 instance.
-# Tested on: Amazon Linux 2023 / Ubuntu 22.04
+# Tested on: Amazon Linux 2023 / Ubuntu 26.04 LTS
 # Recommended: t3.large (8 GB RAM) or t3.medium (4 GB minimum)
 
 set -e
