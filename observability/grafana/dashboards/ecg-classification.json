@@ -25,6 +25,16 @@
       "description": "Replay/streaming evaluation: live predictions vs the replayed MIT-BIH ground-truth label. Not production accuracy (labels are from a previously annotated dataset).",
       "type": "gauge",
       "gridPos": { "h": 4, "w": 6, "x": 6, "y": 0 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent", "min": 0, "max": 100,
+          "thresholds": { "mode": "absolute", "steps": [
+            { "color": "red", "value": null },
+            { "color": "orange", "value": 90 },
+            { "color": "green", "value": 95 }
+          ] }
+        }
+      },
       "targets": [
         {
           "datasource": "Prometheus",
@@ -32,7 +42,7 @@
           "legendFormat": "replay accuracy %"
         }
       ],
-      "options": { "minValue": 0, "maxValue": 100 }
+      "options": { "showThresholdLabels": false, "showThresholdMarkers": true }
     },
     {
       "id": 3,
