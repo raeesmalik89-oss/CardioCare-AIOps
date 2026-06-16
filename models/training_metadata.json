@@ -1,6 +1,13 @@
 {
   "model": "XGBoostClassifier",
-  "dataset": "MIT-BIH Arrhythmia Dataset",
+  "dataset": "MIT-BIH Arrhythmia Database (Kaggle preprocessed: shayanfazeli/heartbeat)",
+  "dataset_source": {
+    "physionet": "https://physionet.org/content/mitdb/1.0.0/",
+    "kaggle_mirror": "https://www.kaggle.com/datasets/shayanfazeli/heartbeat",
+    "primary_citation": "G. B. Moody and R. G. Mark, \"The impact of the MIT-BIH Arrhythmia Database,\" IEEE Eng. Med. Biol. Mag., 20(3):45-50, 2001, doi:10.1109/51.932724",
+    "physionet_citation": "A. L. Goldberger et al., \"PhysioBank, PhysioToolkit, and PhysioNet,\" Circulation, 101(23):e215-e220, 2000, doi:10.1161/01.CIR.101.23.e215",
+    "note": "MIT-BIH is de-identified public research data. HIPAA does not apply to it; HIPAA technical-safeguard principles informed the platform's security controls only."
+  },
   "features": 187,
   "classes": {
     "0": "Normal",
@@ -11,8 +18,40 @@
   },
   "trained_at": "2026-06-14T22:01:15.204822Z",
   "model_path": "/models/xgboost_ecg_classifier.json",
-  "accuracy": 0.9727,
-  "auc_roc": 0.9927,
+  "provenance": {
+    "training_log": "evidence/20260614_215910/xgboost_training.log",
+    "train_samples": 87554,
+    "test_samples": 21892,
+    "class_distribution_train": {"0": 72471, "1": 2223, "2": 5788, "3": 641, "4": 6431},
+    "trained_on_real_data": true,
+    "real_data_evidence": "Sample counts (87,554 train / 21,892 test) and the imbalanced 5-class distribution match the full MIT-BIH dataset. The synthetic fallback in train.py produces only n=5,000 with a fixed seed=42 distribution, so these counts prove the committed model was trained on the real dataset, not the fallback.",
+    "dataset_sha256": "not-recorded-for-this-run",
+    "dataset_sha256_note": "Future training runs record the SHA-256 of mitbih_train.csv / mitbih_test.csv here automatically (see train.py). This committed run predates the field; provenance is established by the sample counts above and the committed training log."
+  },
+  "metrics": {
+    "accuracy": 0.9727,
+    "auc_roc_weighted_ovr": 0.9927,
+    "evaluation": "Held-out MIT-BIH test set (21,892 beats). Offline test metrics only - production streams carry no ground-truth labels, so no live-accuracy figure is claimed.",
+    "per_class": {
+      "Normal":           {"precision": 0.99, "recall": 0.98, "f1": 0.98, "support": 18118},
+      "Supraventricular": {"precision": 0.67, "recall": 0.81, "f1": 0.73, "support": 556},
+      "Ventricular":      {"precision": 0.93, "recall": 0.95, "f1": 0.94, "support": 1448},
+      "Fusion":           {"precision": 0.69, "recall": 0.85, "f1": 0.76, "support": 162},
+      "Unclassifiable":   {"precision": 0.98, "recall": 0.98, "f1": 0.98, "support": 1608}
+    },
+    "macro_avg":    {"precision": 0.85, "recall": 0.91, "f1": 0.88},
+    "weighted_avg": {"precision": 0.98, "recall": 0.97, "f1": 0.97},
+    "confusion_matrix": {
+      "labels": ["Normal", "Supraventricular", "Ventricular", "Fusion", "Unclassifiable"],
+      "rows_true_cols_pred": [
+        [17750, 220, 75, 46, 27],
+        [99, 449, 6, 0, 2],
+        [44, 3, 1381, 16, 4],
+        [13, 0, 11, 138, 0],
+        [24, 3, 5, 0, 1576]
+      ]
+    }
+  },
   "author": "Muhammad Raees",
-  "compliance": "HIPAA 45 CFR 164.312 \u2014 model trained on de-identified data"
+  "compliance": "Security controls designed using HIPAA 45 CFR §164.312 technical-safeguard principles. The model is trained on de-identified public research data (MIT-BIH); HIPAA does not apply to that dataset."
 }

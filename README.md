@@ -1,13 +1,15 @@
 
 # CardioCare-AIOps
 
-A real-time AI-powered cardiac monitoring platform built on AWS EC2 (Ubuntu 26.04 LTS) using event-driven AIOps principles.
+A real-time, AI-assisted cardiac monitoring platform — an event-driven streaming pipeline with serverless alerting, full observability and fail-closed security. It is deployed on a single AWS EC2 instance (Ubuntu 26.04 LTS) via Docker Compose; EC2 is the deployment target, not an IaC-managed cloud architecture (see [Scope & Limitations](docs/LIMITATIONS.md)).
 
 ---
 
 ## About
 
-CardioCare-AIOps detects cardiac anomalies in real time from real MIT-BIH ECG beats replayed as live vital-sign streams across 9 ICU beds. Apache Kafka carries AES-256-GCM encrypted event envelopes; the live AIOps engine runs a hybrid detector — a scikit-learn Isolation Forest plus clinical rules on the vitals, and an XGBoost classifier on each real ECG beat — and critical events invoke a serverless alert function (OpenFaaS faasd). XGBoost is trained offline on the MIT-BIH Arrhythmia dataset (97.27%) and serves live in the ensemble.
+CardioCare-AIOps detects cardiac anomalies in real time from real MIT-BIH ECG beats replayed as live vital-sign streams across 9 ICU beds. Apache Kafka carries AES-256-GCM encrypted event envelopes; the live AIOps engine runs a hybrid detector — a scikit-learn Isolation Forest plus clinical rules on the vitals, and an XGBoost classifier on each real ECG beat — and critical events invoke a serverless alert function (OpenFaaS faasd). XGBoost is trained offline on the MIT-BIH Arrhythmia dataset (97.27% held-out test accuracy) and serves live in the ensemble.
+
+**Scope note:** CardioCare-AIOps is an *event-driven monitoring platform with AIOps components* (ML-based anomaly detection, scheduled retraining, full observability) rather than a complete AIOps suite. Capabilities such as root-cause analysis, event correlation, predictive incident management and automated remediation are out of scope — see [Scope & Limitations](docs/LIMITATIONS.md).
 
 ## Highlights
 
@@ -29,16 +31,36 @@ Apache Kafka, FastAPI, Flask, scikit-learn, XGBoost, OpenFaaS, Keycloak, Open Po
 CardioCare-AIOps uses a hybrid, fully-live detection strategy:
 
 - **Vitals path — Isolation Forest + clinical rules** (`services/aiops-engine`): unsupervised anomaly scoring on the 7 streaming vitals, with clinical rules overriding the model for life-threatening values and routing severity (CRITICAL / HIGH / MEDIUM / LOW). Retrains on a schedule from real observations.
-- **ECG-beat path — XGBoost** (trained by `services/ml-trainer`, served by the engine): a supervised classifier that labels every real ECG beat into 5 AAMI classes (187 features), trained on the MIT-BIH Arrhythmia dataset. It runs **live** in the ensemble — its ~97% live accuracy matches the offline test set.
+- **ECG-beat path — XGBoost** (trained by `services/ml-trainer`, served by the engine): a supervised classifier that labels every real ECG beat into 5 AAMI classes (187 features), trained on the MIT-BIH Arrhythmia dataset. It runs **live** in the ensemble, applying the model trained and validated offline.
+
+**Offline (held-out test set) performance — 21,892 beats:**
 
 | Metric | Value |
 |---|---|
 | Training samples | 87,554 |
 | Test samples | 21,892 |
 | Test accuracy | 97.27% |
-| Weighted AUC-ROC | 0.9927 |
+| Weighted AUC-ROC (one-vs-rest) | 0.9927 |
 
-The trained model and run metrics are committed at `models/xgboost_ecg_classifier.json` and `models/training_metadata.json`; the full training log is under `evidence/`. Reproduce or rebuild the trainer via `services/ml-trainer/README.md` (prebuilt image: `mraees1989/cardiocare-ml-trainer:v1.0`).
+**Per-class metrics (offline test set):**
+
+| Class | Precision | Recall | F1 | Support |
+|---|---|---|---|---|
+| Normal | 0.99 | 0.98 | 0.98 | 18,118 |
+| Supraventricular | 0.67 | 0.81 | 0.73 | 556 |
+| Ventricular | 0.93 | 0.95 | 0.94 | 1,448 |
+| Fusion | 0.69 | 0.85 | 0.76 | 162 |
+| Unclassifiable | 0.98 | 0.98 | 0.98 | 1,608 |
+| **Macro avg** | 0.85 | 0.91 | 0.88 | — |
+| **Weighted avg** | 0.98 | 0.97 | 0.97 | 21,892 |
+
+> These are **offline test-set** metrics. The model runs live on the streaming beats, but production streams have no ground-truth labels, so **no live-accuracy figure is claimed** — only the validated offline performance above. The full per-class report and confusion matrix are in `models/training_metadata.json` and the training log under `evidence/`.
+
+### Data provenance & reproducibility
+
+The committed model was trained on the **real** MIT-BIH dataset, not the synthetic CI fallback. Evidence: the training log records **87,554 train / 21,892 test** beats with the genuine imbalanced 5-class distribution, whereas the synthetic fallback in `train.py` produces only `n=5,000` with a fixed `seed=42`. From this run forward, `train.py` also records the **SHA-256 of each dataset CSV** and the exact sample counts into `training_metadata.json` (`provenance` block) for an auditable training trail.
+
+The trained model and run metrics are committed at `models/xgboost_ecg_classifier.json` and `models/training_metadata.json`; the full training log is under `evidence/`. The MIT-BIH CSVs (~490 MB) are not committed (GitHub size limits) — download from [PhysioNet](https://physionet.org/content/mitdb/1.0.0/) or the [Kaggle mirror](https://www.kaggle.com/datasets/shayanfazeli/heartbeat) and place under `data/`. Reproduce or rebuild via `services/ml-trainer/README.md` (prebuilt image: `mraees1989/cardiocare-ml-trainer:v1.0`).
 
 ## Getting Started
 
@@ -72,7 +94,7 @@ OpenFaaS Kafka connector for event-driven invocation.
 - Kafka payloads are encrypted with AES-256-GCM before entering the broker.
 - Keycloak and OPA fail closed when unavailable.
 - Patient identifiers are excluded from Prometheus labels and clinical logs.
-- The repository maps controls to ISO 27001, NIST CSF and GDPR Article 32.
+- Security controls are **aligned with the principles of** ISO 27001, NIST CSF and GDPR Article 32. This is design alignment, not certified compliance — no formal audit, risk assessment or DPIA has been performed (see [Scope & Limitations](docs/LIMITATIONS.md)).
 - GitHub Actions produces an OWASP ZAP baseline report; scan results are
   evidence from each workflow run rather than a hard-coded claim.
 - The bundled Keycloak users are demonstration accounts with temporary

@@ -12,10 +12,30 @@ Run-once container — restart: no in docker-compose.
 import os
 import sys
 import json
+import hashlib
 import logging
 import numpy as np
 import pandas as pd
 from datetime import datetime
+
+# Module-level provenance record — populated at data-load time and written into
+# training_metadata.json so every model ships with an auditable training origin.
+PROVENANCE = {
+    "trained_on_real_data": False,
+    "train_samples": 0,
+    "test_samples": 0,
+    "class_distribution_train": {},
+    "dataset_sha256": {},
+}
+
+
+def _sha256(path):
+    """SHA-256 of a file, streamed so large CSVs don't exhaust memory."""
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
 
 # XGBoost: gradient boosted trees — best-in-class for tabular ECG data
 
@@ -94,8 +114,22 @@ def load_mitbih_data():
         y_test  = test_df.iloc[:, 187].values.astype(int)
 
         log.info("Train: %d samples | Test: %d samples", len(X_train), len(X_test))
-        log.info("Class distribution: %s",
-                 dict(zip(*np.unique(y_train, return_counts=True))))
+        dist = {int(k): int(v) for k, v in zip(*np.unique(y_train, return_counts=True))}
+        log.info("Class distribution: %s", dist)
+
+        # Record auditable provenance: counts, class balance, dataset checksums.
+        PROVENANCE.update({
+            "trained_on_real_data": True,
+            "train_samples": int(len(X_train)),
+            "test_samples": int(len(X_test)),
+            "class_distribution_train": dist,
+            "dataset_sha256": {
+                "mitbih_train.csv": _sha256(MITBIH_TRAIN),
+                "mitbih_test.csv": _sha256(MITBIH_TEST),
+            },
+        })
+        log.info("Dataset SHA-256 recorded for provenance: %s",
+                 PROVENANCE["dataset_sha256"])
         return X_train, y_train, X_test, y_test
 
     else:
@@ -147,6 +181,14 @@ def generate_synthetic_data():
         X, y, test_size=0.2, random_state=42, stratify=y
     )
     log.info("Synthetic data: train=%d test=%d", len(X_train), len(X_test))
+    PROVENANCE.update({
+        "trained_on_real_data": False,
+        "train_samples": int(len(X_train)),
+        "test_samples": int(len(X_test)),
+        "class_distribution_train": {int(k): int(v)
+                                     for k, v in zip(*np.unique(y_train, return_counts=True))},
+        "dataset_sha256": {"note": "synthetic fallback — not a real dataset"},
+    })
     return X_train, y_train, X_test, y_test
 
 
@@ -214,12 +256,14 @@ def evaluate_model(model, X_test, y_test):
     log.info("Test accuracy: %.4f (%.1f%%)", acc, acc * 100)
 
 
-    # Per-class report
+    # Per-class report — both human-readable (log) and structured (metadata).
 
+    target_names = [CLASS_NAMES[i] for i in range(5)]
     report = classification_report(
-        y_test, y_pred,
-        target_names=[CLASS_NAMES[i] for i in range(5)],
-        zero_division=0
+        y_test, y_pred, target_names=target_names, zero_division=0
+    )
+    report_dict = classification_report(
+        y_test, y_pred, target_names=target_names, zero_division=0, output_dict=True
     )
 
     log.info("Classification report:\n%s", report)
@@ -239,10 +283,19 @@ def evaluate_model(model, X_test, y_test):
     cm = confusion_matrix(y_test, y_pred)
     log.info("Confusion matrix:\n%s", cm)
 
+    # Structured per-class metrics for the audit record (precision/recall/F1).
+    def _round(d):
+        return {k: round(float(v), 4) for k, v in d.items()}
+
+    per_class = {name: _round(report_dict[name]) for name in target_names}
+
     return {
         "accuracy":    round(float(acc), 4),
         "auc_roc":     round(float(auc), 4),
         "report":      report,
+        "per_class":   per_class,
+        "macro_avg":   _round(report_dict["macro avg"]),
+        "weighted_avg": _round(report_dict["weighted avg"]),
         "confusion_matrix": cm.tolist(),
     }
 
@@ -267,15 +320,44 @@ def save_model(model, metrics):
 
     metadata = {
         "model":          "XGBoostClassifier",
-        "dataset":        "MIT-BIH Arrhythmia Dataset",
+        "dataset":        "MIT-BIH Arrhythmia Database (Kaggle preprocessed: shayanfazeli/heartbeat)",
+        "dataset_source": {
+            "physionet":      "https://physionet.org/content/mitdb/1.0.0/",
+            "kaggle_mirror":  "https://www.kaggle.com/datasets/shayanfazeli/heartbeat",
+            "note":           "MIT-BIH is de-identified public research data. HIPAA does "
+                              "not apply to it; HIPAA technical-safeguard principles informed "
+                              "the platform's security controls only.",
+        },
         "features":       187,
         "classes":        CLASS_NAMES,
         "trained_at":     datetime.utcnow().isoformat() + "Z",
         "model_path":     MODEL_OUTPUT,
-        "accuracy":       metrics["accuracy"],
-        "auc_roc":        metrics["auc_roc"],
+        "provenance": {
+            "trained_on_real_data":     PROVENANCE["trained_on_real_data"],
+            "train_samples":            PROVENANCE["train_samples"],
+            "test_samples":             PROVENANCE["test_samples"],
+            "class_distribution_train": PROVENANCE["class_distribution_train"],
+            "dataset_sha256":           PROVENANCE["dataset_sha256"],
+        },
+        "metrics": {
+            "accuracy":             metrics["accuracy"],
+            "auc_roc_weighted_ovr": metrics["auc_roc"],
+            "evaluation":           "Held-out test set. Offline test metrics only — "
+                                    "production streams carry no ground-truth labels, so no "
+                                    "live-accuracy figure is claimed.",
+            "per_class":            metrics["per_class"],
+            "macro_avg":            metrics["macro_avg"],
+            "weighted_avg":         metrics["weighted_avg"],
+            "confusion_matrix": {
+                "labels": [CLASS_NAMES[i] for i in range(5)],
+                "rows_true_cols_pred": metrics["confusion_matrix"],
+            },
+        },
         "author":         "Muhammad Raees",
-        "compliance":     "HIPAA 45 CFR 164.312 — model trained on de-identified data",
+        "compliance":     "Security controls designed using HIPAA 45 CFR §164.312 "
+                          "technical-safeguard principles. The model is trained on "
+                          "de-identified public research data (MIT-BIH); HIPAA does not "
+                          "apply to that dataset.",
     }
     with open(META_OUTPUT, "w") as f:
         json.dump(metadata, f, indent=2)

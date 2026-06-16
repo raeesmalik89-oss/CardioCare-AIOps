@@ -18,8 +18,8 @@ The diagram below shows all components of the CardioCare-AIOps platform and how 
 ║  ┌─────────────────────────────────────────────────────────────────────────┐ ║
 ║  │  LAYER 1 — DATA INGESTION                                               │ ║
 ║  │  Producer Service                                                        │ ║
-║  │  • Simulates 5 patient devices emitting vitals at 1 event/second        │ ║
-║  │  • Injects ~5% anomalous events (tachycardia, hypoxemia, hypertension)  │ ║
+║  │  • Replays REAL MIT-BIH ECG beats across 9 ICU beds at 1 event/second   │ ║
+║  │  • Each beat carries its ground-truth AAMI label + derived vitals layer │ ║
 ║  │  • In production: replaced by IoT/HL7 FHIR device connectors            │ ║
 ║  └────────────────────────────┬────────────────────────────────────────────┘ ║
 ║                               │ publish (key=patient_id)                      ║
@@ -43,7 +43,7 @@ The diagram below shows all components of the CardioCare-AIOps platform and how 
 ║  │  • Exposes Prometheus /metrics on port 8001                             │ ║
 ║  │                                                                          │ ║
 ║  │  Alert Function (handler.py) — Serverless FaaS pattern                  │ ║
-║  │  • Triggered by kafka.alerts.critical (event-driven invocation)         │ ║
+║  │  • Triggered by cardiac.alerts.critical (event-driven invocation)       │ ║
 ║  │  • Also callable via HTTP POST (OpenFaaS-compatible endpoint)           │ ║
 ║  │  • Stateless, single-purpose, independently scalable                    │ ║
 ║  └──────────┬──────────────────────────────────────────────────────────────┘ ║
@@ -208,9 +208,16 @@ The alert handler is deliberately separated from the AIOps engine to demonstrate
 
 ---
 
-## 5. Standards and Compliance
+## 5. Standards Alignment
 
-| Standard | Specific Control | Implementation in This Project |
+> **Alignment, not certified compliance.** The table below maps design choices to the
+> *principles* of each standard for academic purposes. No certifying audit, formal risk
+> assessment or GDPR DPIA has been performed. See [Scope & Limitations](LIMITATIONS.md).
+> HIPAA is referenced only because the technical safeguards were designed using HIPAA 45
+> CFR §164.312 principles — the MIT-BIH dataset is de-identified public research data to
+> which HIPAA does not apply.
+
+| Standard | Specific Control | Alignment in This Project |
 |---|---|---|
 | ISO 27001:2022 | A.9.4 — Application access control | Keycloak JWT authentication + OPA RBAC policy |
 | ISO 27001:2022 | A.16.1.5 — Incident management | Alert function escalation path and audit log |
@@ -218,6 +225,26 @@ The alert handler is deliberately separated from the AIOps engine to demonstrate
 | NIST CSF 2.0 | PR.AC-4 — Access permissions | OPA `cardiac_policy.rego` enforces least-privilege |
 | NIST CSF 2.0 | DE.CM-7 — Monitoring | Prometheus anomaly and alert counters visible in Grafana |
 | GDPR Art.32 | Security of processing | JWT bearer auth, OPA policy, audit trail in Loki |
+
+---
+
+## 6. Detection Strategy (Hybrid)
+
+Layer 3 runs a **hybrid** detector: the unsupervised Isolation Forest scores the 7-feature
+vitals vector, clinical rules override it for life-threatening values, and a supervised
+**XGBoost** classifier labels each real MIT-BIH ECG beat live into 5 AAMI classes. XGBoost
+is trained and validated offline (held-out test accuracy 97.27%) and applied live in the
+ensemble. The Isolation Forest path is unsupervised and therefore has no labelled benchmark
+— its statistical effectiveness is an open evaluation gap (see [Scope & Limitations](LIMITATIONS.md)).
+
+## 7. Scope & Limitations
+
+This is a **single-node demo** deployed on one AWS EC2 host via Docker Compose. Every
+component (Kafka, Keycloak, OPA, Grafana, Prometheus, application services) is a single
+instance with no HA/failover, and EC2 is a deployment target rather than an IaC-managed
+architecture. The project is an event-driven monitoring platform with AIOps components, not
+a full AIOps suite. The complete, honest scope statement is in
+[docs/LIMITATIONS.md](LIMITATIONS.md).
 
 ---
 
