@@ -31,7 +31,7 @@ Apache Kafka, FastAPI, Flask, scikit-learn, XGBoost, OpenFaaS, Keycloak, Open Po
 CardioCare-AIOps uses a hybrid, fully-live detection strategy:
 
 - **Vitals path — Isolation Forest + clinical rules** (`services/aiops-engine`): unsupervised anomaly scoring on the 7 streaming vitals, with clinical rules overriding the model for life-threatening values and routing severity (CRITICAL / HIGH / MEDIUM / LOW). Retrains on a schedule from real observations.
-- **ECG-beat path — XGBoost** (trained by `services/ml-trainer`, served by the engine): a supervised classifier that labels every real ECG beat into 5 AAMI classes (187 features), trained on the MIT-BIH Arrhythmia dataset. It runs **live** in the ensemble, applying the model trained and validated offline.
+- **ECG-beat path — XGBoost** (trained by `services/ml-trainer`, served by the engine): a supervised classifier that labels every real ECG beat into 5 AAMI classes (187 features), trained on the MIT-BIH Arrhythmia dataset. It runs **live** in the ensemble, applying the model trained and validated offline. **Training is offline-only** — XGBoost is trained once and served as a frozen, read-only model; it is *not* retrained from the stream. (The Isolation Forest, by contrast, *is* retrained online.)
 
 **Offline (held-out test set) performance — 21,892 beats:**
 

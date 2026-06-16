@@ -55,6 +55,14 @@ to conflate them:
 In short: we *do* report a live, continuously-updating accuracy, and we label it honestly as
 **replay/streaming evaluation**, never as production accuracy.
 
+**Evaluation is not training.** To avoid any confusion: "online/replay evaluation" means the
+model is *scored* live — it does **not** mean XGBoost is *trained* live. XGBoost is trained
+**once, offline** (`services/ml-trainer/train.py`) and then served as a frozen, read-only
+model; it is never retrained from the stream (production beats have no labels to train on).
+The only component that learns online is the unsupervised **Isolation Forest**, which the
+engine retrains every ~5 minutes on a rolling buffer of live vitals. So: XGBoost = offline
+training + online inference + online replay evaluation; Isolation Forest = online retraining.
+
 ## 3. Data provenance
 
 - The committed model was trained on the **real** MIT-BIH dataset, evidenced by the
