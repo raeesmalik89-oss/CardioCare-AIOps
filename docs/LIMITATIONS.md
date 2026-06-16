@@ -28,20 +28,32 @@ scope and listed as future work:
 - Automated remediation / self-healing
 - Capacity forecasting
 
-## 2. Model runs live; performance metrics are offline only
+## 2. Three levels of model evaluation — be precise about which is which
 
 **The XGBoost model runs live** in the AIOps ensemble, classifying every real MIT-BIH
-beat as it streams. What is *offline* is the **measurement**, not the model.
+beat as it streams. There are three distinct senses of "accuracy", and we are careful not
+to conflate them:
 
-The reported figures (97.27% accuracy, 0.9927 weighted AUC-ROC, and the per-class
-precision/recall/F1 in `models/training_metadata.json`) are **held-out offline
-test-set** results on 21,892 MIT-BIH beats — i.e. how the model was *validated*.
+1. **Offline test accuracy (validation).** 97.27% accuracy, 0.9927 weighted AUC-ROC, and
+   the per-class precision/recall/F1 in `models/training_metadata.json` — measured once on
+   the held-out MIT-BIH test set (21,892 beats). This is how the model was *validated*.
 
-Because production streams carry **no ground-truth labels**, the model's accuracy *on the
-live stream* cannot be measured, so **no live-accuracy figure is claimed**. Earlier wording
-that implied a measured "live accuracy" has been removed. What can be said honestly: the
-same validated model is applied live; its production behaviour is expected to track its
-offline validation, but this is not independently measured.
+2. **Replay / streaming / online evaluation (live, but on replayed labels).** Because each
+   replayed MIT-BIH beat still carries its original annotated label, the engine compares
+   every live prediction to that label and exposes a continuously-updating accuracy —
+   `cardiocare_xgboost_replay_accuracy` (cumulative) and
+   `cardiocare_xgboost_replay_accuracy_window` (sliding window). This *is* a real-time
+   metric and it tracks the offline figure, **but the labels come from a previously
+   annotated dataset replayed onto the stream**, so it is replay/streaming evaluation — the
+   term used in the literature — and **not** production evaluation.
+
+3. **True production accuracy (not available).** Real patient streams have **no ground-truth
+   labels**, so accuracy on genuinely unlabelled production data cannot be measured and is
+   **not claimed**. The replay metric is a faithful proxy under replay conditions, not a
+   guarantee of behaviour on unseen real patients.
+
+In short: we *do* report a live, continuously-updating accuracy, and we label it honestly as
+**replay/streaming evaluation**, never as production accuracy.
 
 ## 3. Data provenance
 

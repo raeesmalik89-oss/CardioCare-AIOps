@@ -54,7 +54,9 @@ CardioCare-AIOps uses a hybrid, fully-live detection strategy:
 | **Macro avg** | 0.85 | 0.91 | 0.88 | — |
 | **Weighted avg** | 0.98 | 0.97 | 0.97 | 21,892 |
 
-> These are **offline test-set** metrics. The model runs live on the streaming beats, but production streams have no ground-truth labels, so **no live-accuracy figure is claimed** — only the validated offline performance above. The full per-class report and confusion matrix are in `models/training_metadata.json` and the training log under `evidence/`.
+> These are **offline test-set** metrics — how the model was validated. The full per-class report and confusion matrix are in `models/training_metadata.json` and the training log under `evidence/`.
+
+**Real-time replay evaluation.** The engine also scores the model *live*: because each replayed MIT-BIH beat still carries its annotated label, every prediction is compared to that label and exposed as a continuously-updating accuracy — `cardiocare_xgboost_replay_accuracy` (cumulative) and `cardiocare_xgboost_replay_accuracy_window` (sliding window, `REPLAY_WINDOW` beats). This is **replay / streaming / online evaluation** (labels originate from a previously annotated dataset), **not** true production accuracy — real patient streams are unlabelled. See [Scope & Limitations](docs/LIMITATIONS.md) §2 for the three-level distinction.
 
 ### Data provenance & reproducibility
 

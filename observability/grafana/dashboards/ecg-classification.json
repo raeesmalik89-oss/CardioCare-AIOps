@@ -21,14 +21,15 @@
     },
     {
       "id": 2,
-      "title": "Live XGBoost Accuracy vs Ground Truth",
+      "title": "Replay Accuracy — cumulative (vs MIT-BIH label)",
+      "description": "Replay/streaming evaluation: live predictions vs the replayed MIT-BIH ground-truth label. Not production accuracy (labels are from a previously annotated dataset).",
       "type": "gauge",
       "gridPos": { "h": 4, "w": 6, "x": 6, "y": 0 },
       "targets": [
         {
           "datasource": "Prometheus",
-          "expr": "100 * sum(cardiocare_xgboost_correct_total) / clamp_min(sum(cardiocare_xgboost_predictions_total), 1)",
-          "legendFormat": "accuracy %"
+          "expr": "100 * cardiocare_xgboost_replay_accuracy",
+          "legendFormat": "replay accuracy %"
         }
       ],
       "options": { "minValue": 0, "maxValue": 100 }
@@ -83,6 +84,26 @@
           "datasource": "Prometheus",
           "expr": "sum by (predicted_class) (cardiocare_xgboost_predictions_total)",
           "legendFormat": "{{predicted_class}}"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "title": "Replay Accuracy over time — cumulative vs sliding window",
+      "description": "Real-time replay/streaming evaluation against replayed MIT-BIH labels. Not production accuracy.",
+      "type": "timeseries",
+      "gridPos": { "h": 7, "w": 24, "x": 0, "y": 13 },
+      "fieldConfig": { "defaults": { "unit": "percent", "min": 0, "max": 100 } },
+      "targets": [
+        {
+          "datasource": "Prometheus",
+          "expr": "100 * cardiocare_xgboost_replay_accuracy",
+          "legendFormat": "cumulative"
+        },
+        {
+          "datasource": "Prometheus",
+          "expr": "100 * cardiocare_xgboost_replay_accuracy_window",
+          "legendFormat": "sliding window"
         }
       ]
     }

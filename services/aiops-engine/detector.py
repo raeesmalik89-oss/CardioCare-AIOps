@@ -19,6 +19,15 @@ Purpose:
     `cardiac.anomalies.detected`; CRITICAL events trigger the serverless alert
     function via `cardiac.alerts.critical`.
 
+    Real-time replay evaluation:
+      Because each replayed MIT-BIH beat carries its original annotated label,
+      the engine compares every live prediction to that label and exposes a
+      continuously-updating accuracy (cardiocare_xgboost_replay_accuracy, plus a
+      sliding-window variant). This is REPLAY / STREAMING / ONLINE evaluation —
+      the model is scored live, but the labels come from a previously annotated
+      dataset, so it is NOT true production evaluation (real patient streams are
+      unlabelled). See docs/LIMITATIONS.md.
+
     If the XGBoost model is not mounted (e.g. CI), the engine degrades
     gracefully to IsolationForest + rules so the demo never breaks.
 
@@ -80,7 +89,20 @@ processing_latency = Histogram("cardiocare_processing_seconds", "Event processin
 xgb_predictions    = Counter("cardiocare_xgboost_predictions_total",
                              "XGBoost ECG beat classifications", ["predicted_class"])
 xgb_correct        = Counter("cardiocare_xgboost_correct_total",
-                             "XGBoost predictions matching the ground-truth label")
+                             "XGBoost predictions matching the replayed ground-truth label")
+# ── Real-time REPLAY (streaming) evaluation ──────────────────────────────────
+# As real MIT-BIH beats replay through the stream they carry their original
+# annotated label. Comparing each live prediction to that label gives a
+# continuously-updating accuracy. This is REPLAY / STREAMING / ONLINE evaluation
+# (labels originate from a previously annotated dataset), NOT true production
+# evaluation (real patient streams are unlabelled). See docs/LIMITATIONS.md.
+xgb_evaluated      = Counter("cardiocare_xgboost_evaluated_total",
+                             "Beats evaluated against a replayed MIT-BIH ground-truth label")
+xgb_replay_acc     = Gauge("cardiocare_xgboost_replay_accuracy",
+                           "Cumulative replay-evaluation accuracy (correct / evaluated). "
+                           "Replay/streaming evaluation against MIT-BIH labels, not production accuracy.")
+xgb_replay_acc_win = Gauge("cardiocare_xgboost_replay_accuracy_window",
+                           "Sliding-window replay accuracy over the last N evaluated beats.")
 current_hr        = Gauge("cardiocare_heart_rate",   "Latest heart rate",  ["bed_number"])
 current_spo2      = Gauge("cardiocare_spo2",          "Latest SpO2",        ["bed_number"])
 current_systolic  = Gauge("cardiocare_systolic_bp",   "Latest systolic BP", ["bed_number"])
@@ -110,6 +132,10 @@ class AIOpsEngine:
         self.model_trained = False
         self.model_lock = threading.Lock()
         self.xgb = load_xgboost_model(XGBOOST_MODEL_PATH)
+        # Real-time replay-evaluation state (cumulative + sliding window)
+        self.replay_correct = 0
+        self.replay_total = 0
+        self.replay_window: deque = deque(maxlen=int(os.getenv("REPLAY_WINDOW", "500")))
         self._bootstrap_model()
 
     def _bootstrap_model(self):
@@ -169,6 +195,29 @@ class AIOpsEngine:
         except Exception as exc:  # noqa: BLE001
             log.warning("XGBoost classification failed: %s", exc)
             return None, None
+
+    # ── Real-time replay (streaming) evaluation ──────────────────────────────
+    def record_replay(self, predicted: int, true_label) -> None:
+        """Compare a live prediction with the REPLAYED MIT-BIH ground-truth label
+        and update the continuously-running accuracy metrics.
+
+        This is replay / streaming / online evaluation: the labels come from a
+        previously annotated dataset replayed onto the live stream, so the model
+        is scored continuously (every event) rather than in an offline batch.
+        It is NOT true production evaluation — real patient streams have no
+        ground-truth labels (see docs/LIMITATIONS.md).
+        """
+        if true_label is None:
+            return
+        hit = 1 if int(true_label) == int(predicted) else 0
+        self.replay_total += 1
+        self.replay_correct += hit
+        self.replay_window.append(hit)
+        xgb_evaluated.inc()
+        if hit:
+            xgb_correct.inc()
+        xgb_replay_acc.set(self.replay_correct / self.replay_total)
+        xgb_replay_acc_win.set(sum(self.replay_window) / len(self.replay_window))
 
     # ── Ensemble severity ────────────────────────────────────────────────────
     def classify_severity(self, vitals: dict, score: float, xgb_class) -> str:
@@ -257,9 +306,8 @@ def main():
             xgb_class, xgb_conf = engine.classify_beat(event.get("ecg_beat"))
             if xgb_class is not None:
                 xgb_predictions.labels(predicted_class=CLASS_NAMES[xgb_class]).inc()
-                true_label = event.get("true_label")
-                if true_label is not None and int(true_label) == xgb_class:
-                    xgb_correct.inc()
+                # Real-time replay evaluation against the replayed MIT-BIH label
+                engine.record_replay(xgb_class, event.get("true_label"))
 
             # Per-bed gauges
             current_hr.labels(bed_number=bed_number).set(vitals.get("heart_rate", 0))
