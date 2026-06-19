@@ -177,11 +177,11 @@ services:
     environment:
       KEYCLOAK_ADMIN: admin
       KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-CardioCare@2024}
-      KC_DB: dev-mem
+      KC_DB: dev-file
     volumes:
       - ./security/keycloak:/opt/keycloak/data/import
     ports:
-      - "8080:8080"
+      - "8095:8080"
     networks: [cardiocare-net]
     restart: unless-stopped
 
