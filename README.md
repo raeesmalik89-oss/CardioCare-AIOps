@@ -72,6 +72,8 @@ cd CardioCare-AIOps
 cp .env.example .env
 # Generate a 32-byte AES key and place the printed value in .env:
 python -c "import base64,secrets; print(base64.urlsafe_b64encode(secrets.token_bytes(32)).decode())"
+# If running locally (not on EC2), edit .env and set: MITBIH_DATA_DIR=./data
+# On EC2 the CSVs live at /data — the default in .env.example is already correct.
 docker compose up -d
 ```
 
@@ -81,9 +83,11 @@ endpoints remain available for platform probes and Prometheus.
 ## OpenFaaS Deployment
 
 Install OpenFaaS or faasd and `faas-cli`, log in to the gateway, export
-`EVENT_ENCRYPTION_KEY`, then run:
+`EVENT_ENCRYPTION_KEY`. Log in to Docker Hub before running the script
+(the script pushes the built image to Docker Hub):
 
 ```bash
+docker login
 ./openfaas/deploy.sh
 ```
 
