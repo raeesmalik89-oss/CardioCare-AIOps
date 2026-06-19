@@ -1,5 +1,3 @@
-version: "3.9"
-
 networks:
   cardiocare-net:
     driver: bridge
@@ -81,11 +79,15 @@ services:
     container_name: cardiocare-kafka-exporter
     command:
       - "--kafka.server=kafka:29092"
-    depends_on: [kafka]
+      - "--retry.backoff=3s"
+      - "--retry.max=10"
+    depends_on:
+      kafka:
+        condition: service_started
     ports:
       - "9308:9308"
     networks: [cardiocare-net]
-    restart: unless-stopped
+    restart: on-failure
 
   # ─── Data Producer: Simulated Cardiac Vitals ─────────────────────────────────
   producer:
