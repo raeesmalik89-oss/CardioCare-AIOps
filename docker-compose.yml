@@ -143,7 +143,8 @@ services:
       PROMETHEUS_PORT: 8002
       EVENT_ENCRYPTION_KEY: ${EVENT_ENCRYPTION_KEY:?Set EVENT_ENCRYPTION_KEY in .env}
     ports:
-      - "8002:8002"
+      - "5000:5000"   # Flask HTTP endpoint (OpenFaaS-compatible invoke + healthz)
+      - "8002:8002"   # Prometheus metrics
     networks: [cardiocare-net]
     restart: unless-stopped
 
