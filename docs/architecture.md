@@ -7,67 +7,31 @@
 
 ## 1. System-Level Architecture Diagram
 
-The diagram below shows all components of the CardioCare-AIOps platform and how they interact.  I have organised the system into five horizontal layers to make the separation of concerns visible.
+The diagram below shows all components of the CardioCare-AIOps platform and how they interact. I have organised the system into **eight horizontal layers** so the separation of concerns is explicit. Data flows from top to bottom, while the security (encryption, identity) and observability concerns wrap the whole stack.
 
-```
-╔═══════════════════════════════════════════════════════════════════════════════╗
-║                         CardioCare-AIOps Platform                            ║
-║          (Deployed on AWS EC2 via Docker Compose — single-node demo)         ║
-║                                                                               ║
-║  ┌─────────────────────────────────────────────────────────────────────────┐ ║
-║  │  LAYER 1 — DATA INGESTION                                               │ ║
-║  │  Producer Service                                                        │ ║
-║  │  • Replays REAL MIT-BIH ECG beats across 9 ICU beds at 1 event/second   │ ║
-║  │  • Each beat carries its ground-truth AAMI label + derived vitals layer │ ║
-║  │  • In production: replaced by IoT/HL7 FHIR device connectors            │ ║
-║  └────────────────────────────┬────────────────────────────────────────────┘ ║
-║                               │ publish (key=patient_id)                      ║
-║  ┌─────────────────────────────▼────────────────────────────────────────────┐ ║
-║  │  LAYER 2 — EVENT STREAMING (Apache Kafka)                               │ ║
-║  │                                                                          │ ║
-║  │  cardiac.vitals.stream  ──►  cardiac.anomalies.detected                 │ ║
-║  │         (3 partitions)              (3 partitions)                       │ ║
-║  │                                          └──►  cardiac.alerts.critical   │ ║
-║  │                                                     (1 partition)        │ ║
-║  └──────────┬──────────────────────────────────────────────────────────────┘ ║
-║             │ consume                                                         ║
-║  ┌──────────▼──────────────────────────────────────────────────────────────┐ ║
-║  │  LAYER 3 — AIOPS PROCESSING                                             │ ║
-║  │                                                                          │ ║
-║  │  AIOps Engine (detector.py)                                              │ ║
-║  │  • Extracts 7-feature vector from each event                            │ ║
-║  │  • Scores with IsolationForest (sklearn)                                │ ║
-║  │  • Classifies severity: CRITICAL / HIGH / MEDIUM / LOW                  │ ║
-║  │  • Auto-retrains on sliding 2000-event buffer every 5 minutes           │ ║
-║  │  • Exposes Prometheus /metrics on port 8001                             │ ║
-║  │                                                                          │ ║
-║  │  Alert Function (handler.py) — Serverless FaaS pattern                  │ ║
-║  │  • Triggered by cardiac.alerts.critical (event-driven invocation)       │ ║
-║  │  • Also callable via HTTP POST (OpenFaaS-compatible endpoint)           │ ║
-║  │  • Stateless, single-purpose, independently scalable                    │ ║
-║  └──────────┬──────────────────────────────────────────────────────────────┘ ║
-║             │                                                                 ║
-║  ┌──────────▼──────────────────────────────────────────────────────────────┐ ║
-║  │  LAYER 4 — API & SECURITY                                               │ ║
-║  │                                                                          │ ║
-║  │  FastAPI Gateway (:8000)                                                 │ ║
-║  │  • /api/v1/vitals   /api/v1/anomalies   /api/v1/alerts                  │ ║
-║  │  • OpenTelemetry traces exported to Jaeger                              │ ║
-║  │                                                                          │ ║
-║  │  Keycloak (:8080) ──► JWT validation ──► OPA (:8181) ──► RBAC decision │ ║
-║  │  Roles: cardiologist, doctor, nurse, analyst                            │ ║
-║  └──────────┬──────────────────────────────────────────────────────────────┘ ║
-║             │                                                                 ║
-║  ┌──────────▼──────────────────────────────────────────────────────────────┐ ║
-║  │  LAYER 5 — OBSERVABILITY                                                │ ║
-║  │                                                                          │ ║
-║  │  Prometheus (:9090) ── scrapes ──► all /metrics endpoints               │ ║
-║  │  Grafana (:3000)    ── queries ──► Prometheus + Loki + Jaeger           │ ║
-║  │  Loki (:3100)       ── ingests ──► container logs via Promtail          │ ║
-║  │  Jaeger (:16686)    ── ingests ──► OTLP traces from FastAPI             │ ║
-║  └─────────────────────────────────────────────────────────────────────────┘ ║
-╚═══════════════════════════════════════════════════════════════════════════════╝
-```
+![CardioCare-AIOps 8-Layer System Architecture](images/8-layer-architecture.png)
+
+The same 16 Docker containers, deployed on a single AWS EC2 host via Docker Compose, are grouped into these eight layers:
+
+**Layer 1 — Data Ingestion & Sources.** The producer service replays real MIT-BIH ECG beats as a live stream across 9 simulated ICU beds at one event per second, together with vital signs (HR, SpO₂, BP, temperature, respiration). A NEWS2 generator computes an early-warning deterioration score (0–20) per reading. In production this layer is replaced by IoT / HL7 FHIR device connectors.
+
+**Layer 2 — Cryptographic / PHI Protection.** Every payload is encrypted with AES-256-GCM at the application layer before it leaves the producer, with GCM authentication-tag integrity validation and secure key handling. Protected health information (PHI) is encrypted end-to-end — only ciphertext travels on the network and is stored in Kafka. This satisfies the HIPAA §164.312 encryption-in-transit safeguard.
+
+**Layer 3 — Event Streaming & Messaging.** Apache Kafka is the event backbone, coordinated by Zookeeper, with `kafka-init` bootstrapping the topics. Three topics decouple producers from consumers: `cardiac.vitals.stream` (3 partitions — raw vitals & ECG), `cardiac.anomalies.detected` (3 partitions — ML-flagged anomalies) and `cardiac.alerts.critical` (1 partition — critical alerts, strict ordering). Decoupling lets new beds or consumers be added with no downstream change and supports horizontal scale.
+
+**Layer 4 — AIOps Intelligence (Stream Processing).** The intelligence tier. It decrypts each event inside the trusted service boundary and runs a hybrid detector: **XGBoost** classifies each ECG beat into 5 AAMI classes (97.27% offline test accuracy, AUC-ROC 0.9927), **IsolationForest** flags statistical outliers in the 7-feature vitals vector unsupervised (auto-retrained on a sliding buffer every 5 minutes), and a **Clinical Rules engine** applies hard safety thresholds (SpO₂<85, HR>180/<35, SBP>185/<75) that override the models. It emits a risk assessment plus NEWS2 score and publishes anomaly/alert events. Exposes Prometheus `/metrics` on port 8001.
+
+**Layer 5 — Serverless Alerting & Actions.** OpenFaaS (faasd) functions fire only on critical alerts — scale-to-zero, so there is no idle cost. Triggered by `cardiac.alerts.critical` (event-driven), the stateless handler dispatches notifications (email / SMS) and webhooks for escalation (Slack / PagerDuty). Also callable via an OpenFaaS-compatible HTTP endpoint.
+
+**Layer 6 — API & Service Gateway.** A FastAPI high-performance gateway exposes 7 endpoints — clinical, metrics/analytics, alert-management and patient APIs — giving applications, clinicians and downstream services one unified, OpenTelemetry-traced access point. Traces are exported to Jaeger.
+
+**Layer 7 — Identity, Access & Policy.** Keycloak issues OIDC/JWT tokens for authentication; the JWT is validated on every request; OPA (Open Policy Agent) enforces authorization with default-deny RBAC across the clinical roles (cardiologist, doctor, nurse, analyst). The chain is **fail-closed** — if a security component is unavailable, the API denies access (returns 503) rather than allowing it.
+
+**Layer 8 — Observability & Telemetry.** Full-stack monitoring: Prometheus (metrics, port 9091 on host), Grafana (5 live dashboards), Loki + Promtail (centralised log aggregation), Jaeger (distributed tracing via OpenTelemetry), plus Kafka Exporter (Kafka metrics) and Kafka UI (topic management). Observability is privacy-conscious — logs and metrics are keyed on `bed_number`, never on patient identity.
+
+> **Why eight layers?** Explicit security and PHI protection, a clear separation of concerns, an event-driven and decoupled core, AI + clinical rules for safer decisions, serverless alerting for fast response, and enterprise-grade observability. The eight-layer view is the same system as the earlier five-layer summary, drawn at a finer granularity — every layer maps to real, running containers.
+
+> **Infrastructure:** AWS EC2 (t3.large), Docker Compose (16 containers), Ubuntu 26.04 LTS, GitHub Actions CI/CD, OWASP ZAP security testing.
 
 ---
 
