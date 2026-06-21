@@ -1,7 +1,6 @@
 """
 CardioCare-AIOps — Cardiac Vitals Stream Producer
 Author  : Muhammad Raees (raees.malik89@gmail.com)
-Course  : Diploma in Artificial Intelligence Operations — EduQual Level 6 (DAIOL6)
 Topic   : Topic 7 — Serverless Architectures with Event-Driven AIOps,
           Observability and Security Integration
 

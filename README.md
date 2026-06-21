@@ -110,7 +110,7 @@ OpenFaaS Kafka connector for event-driven invocation.
 
 ## Academic Context
 
-Programme:   AIOps — EduQual Level 6
+Programme:   AI Operations
 Institution: Alnafi International College
 Topic:       Serverless Architectures, Event-Driven AIOps, Observability and Security
 Author:      Muhammad Raees

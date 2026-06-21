@@ -1,7 +1,6 @@
 # CardioCare-AIOps — Architecture Documentation
 
 **Author:** Muhammad Raees (raees.malik89@gmail.com)
-**Programme:** Diploma in Artificial Intelligence Operations — EduQual Level 6 (DAIOL6)
 **Topic:** Topic 7 — Designing Serverless Architectures with Event-Driven AIOps, Observability, and Security Integration
 
 ---
@@ -248,4 +247,4 @@ a full AIOps suite. The complete, honest scope statement is in
 
 ---
 
-*Muhammad Raees — DAIOL6 Capstone Architecture Document — June 2026*
+*Muhammad Raees — CardioCare-AIOps Architecture Document — June 2026*

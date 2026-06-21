@@ -1,6 +1,6 @@
 # CardioCare-AIOps — Scope, Limitations & Honest Positioning
 
-**Author:** Muhammad Raees · **Programme:** DAIOL6 (EduQual Level 6) · **June 2026**
+**Author:** Muhammad Raees · **June 2026**
 
 This document states plainly what the project *is*, what it *is not*, and where the
 evidence ends. It exists so that no claim in the README, architecture document or
