@@ -32,9 +32,10 @@ Apache Kafka · FastAPI · XGBoost · scikit-learn · OpenFaaS · Keycloak · Op
 | Test accuracy | 97.27% |
 | Weighted AUC-ROC | 0.9927 |
 
-Two models run in the hybrid engine:
-- **Isolation Forest** — unsupervised anomaly scoring on 7 vitals, retrains every 300 seconds from live observations
-- **XGBoost** — supervised ECG classifier, 5 AAMI classes, 187 features, trained offline on MIT-BIH, served live
+Three components run in the hybrid detection engine:
+- **IsolationForest** — flags rare outliers in 7 vitals without labelled emergencies, retrains on schedule, adapts to drift
+- **Clinical Rules** — safety override: SpO₂<85, HR>180/<35, SBP>185/<75 route directly to CRITICAL, taking precedence over both models
+- **XGBoost** — classifies every real ECG beat live into 5 AAMI classes, trained and validated offline on MIT-BIH (97.27% accuracy)
 
 ## Prerequisites
 
