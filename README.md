@@ -128,4 +128,4 @@ Date: June 2026
 MIT License — Copyright (c) 2026 Muhammad Raees
 ```
 
-Select all text in GitHub editor with **Ctrl + A**, delete, paste this, then click **Preview** to check, then **Commit changes**.
+
