@@ -1,0 +1,50 @@
+# CardioCare-AIOps — Kafka Topics
+#
+# This lists the 3 Kafka topics used in this project — see docs/architecture.md
+# §3 (Data Flow) and §1 Layer 3 for the full explanation.
+#
+# These aren't created from this file automatically. The `kafka-init` service in
+# docker-compose.yml actually creates them on startup by running a few
+# `kafka-topics --create` commands. This file just describes what that script
+# does, in one readable place — if you change one, update the other.
+#
+# Later, if this moves to a real multi-broker Kafka setup (see
+# docs/architecture.md §7), a proper tool (like Terraform) would read topic
+# definitions from a file like this instead of a shell script.
+
+topics:
+  - name: cardiac.vitals.stream
+    partitions: 3
+    replication_factor: 1
+    purpose: >
+      Raw MIT-BIH ECG beats and vitals, encrypted with AES-256-GCM, sent by the
+      producer. 9 simulated ICU beds, 1 event per second each. Read by
+      aiops-engine.
+    produced_by: [producer]
+    consumed_by: [aiops-engine]
+
+  - name: cardiac.anomalies.detected
+    partitions: 3
+    replication_factor: 1
+    purpose: >
+      Events flagged as unusual by IsolationForest or by the clinical safety
+      rules, with the live XGBoost class label and severity added on. Read by
+      the API gateway for the alerts/anomalies endpoints.
+    produced_by: [aiops-engine]
+    consumed_by: [api]
+
+  - name: cardiac.alerts.critical
+    partitions: 1
+    replication_factor: 1
+    purpose: >
+      Only the CRITICAL-severity events, kept in strict order (that's why
+      there's just 1 partition). Read by the alert-function, which then
+      triggers the serverless alert handler.
+    produced_by: [aiops-engine]
+    consumed_by: [alert-function]
+
+# A note on scaling up (see docs/architecture.md §7): running one broker with
+# replication_factor: 1 is fine for this prototype but isn't how you'd run it
+# for real. Moving to production would mean 3+ brokers with
+# replication_factor: 3, and partition counts sized to how many consumers are
+# reading in parallel — not just matched 1:1 to the number of beds.

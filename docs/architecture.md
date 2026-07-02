@@ -1,4 +1,4 @@
-# CardioCare-AIOps — Architecture Documentation
+﻿# CardioCare-AIOps — Architecture Documentation
 
 **Author:** Muhammad Raees (raees.malik89@gmail.com)
 **Topic:** Topic 7 — Designing Serverless Architectures with Event-Driven AIOps, Observability, and Security Integration
@@ -167,7 +167,21 @@ A threshold rule such as "alert if HR > 150" ignores the clinical context.  A pa
 
 ### Why a Separate Alert Function Container
 
-The alert handler is deliberately separated from the AIOps engine to demonstrate the serverless/FaaS pattern required by the exam topic.  It is stateless (no database dependency), single-purpose, and can be scaled horizontally by adding more replicas without touching the detection engine.  The HTTP endpoint makes it compatible with any FaaS platform (OpenFaaS, Knative, AWS Lambda) without code changes.
+The alert function runs in its own container instead of inside the AIOps engine. This keeps it independent and easier to manage. It can also be moved to other serverless platforms such as OpenFaaS, Knative, AWS Lambda, Azure Functions, or Google Cloud Functions without changing the code. Only the event trigger needs to be changed.
+
+### Why OpenFaaS (faasd) Instead of Knative
+
+Knative requires a full Kubernetes cluster, which is too complex for a single EC2 academic project. This project uses **faasd**, which runs directly on Docker and provides the main serverless features — deploying functions, HTTP/event triggers, and scaling idle functions to zero. It is lightweight, easy to manage, and a better fit for this prototype.
+
+### Why XGBoost Instead of Deep Learning for ECG Classification
+
+XGBoost was chosen because it is fast, accurate, and works well on a CPU without needing a GPU. It achieved **97.27% accuracy** while keeping the response time low. A deep learning model would require more computing power and add unnecessary complexity for this project.
+
+### Why OPA Instead of Hardcoded Python Authorization
+
+OPA keeps the access rules separate from the application code. This makes security policies easier to update without changing or redeploying the API. It also keeps all authorization rules in one central place, making them easier to manage and audit.
+
+
 
 ---
 
@@ -202,13 +216,14 @@ ensemble. The Isolation Forest path is unsupervised and therefore has no labelle
 
 ## 7. Scope & Limitations
 
-This is a **single-node demo** deployed on one AWS EC2 host via Docker Compose. Every
-component (Kafka, Keycloak, OPA, Grafana, Prometheus, application services) is a single
-instance with no HA/failover, and EC2 is a deployment target rather than an IaC-managed
-architecture. The project is an event-driven monitoring platform with AIOps components, not
-a full AIOps suite. The complete, honest scope statement is in
-[docs/LIMITATIONS.md](LIMITATIONS.md).
+This project is a **single-node prototype** running on one AWS EC2 instance using Docker Compose. All services, including Kafka, Keycloak, OPA, Prometheus, and Grafana, run as single instances with no high availability or failover.
 
+The project demonstrates an event-driven AIOps architecture for academic purposes and is **not** a production-ready system. More details are available in [docs/LIMITATIONS.md](LIMITATIONS.md).
+
+**Future improvements:**
+- Use a Kafka cluster for higher availability.
+- Deploy on Kubernetes (EKS or AKS) with autoscaling.
+- Add multiple instances of Keycloak and OPA behind a load balancer.
 ---
 
 *Muhammad Raees — CardioCare-AIOps Architecture Document — June 2026*

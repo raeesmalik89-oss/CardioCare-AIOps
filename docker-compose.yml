@@ -214,7 +214,7 @@ services:
       - "--web.enable-lifecycle"
       - "--storage.tsdb.retention.time=7d"
     volumes:
-      - ./observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - prometheus-data:/prometheus
     ports:
       # Host 9091 (9090 is used by faasd's bundled Prometheus on EC2). Grafana scrapes
@@ -234,8 +234,8 @@ services:
       GF_SERVER_ROOT_URL: http://${EC2_PUBLIC_IP:-localhost}:3000
     volumes:
       - grafana-data:/var/lib/grafana
-      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
-      - ./observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
     ports:
       - "3000:3000"
     depends_on: [prometheus, loki]
@@ -248,7 +248,7 @@ services:
     container_name: cardiocare-loki
     command: -config.file=/etc/loki/loki-config.yml
     volumes:
-      - ./observability/loki/loki-config.yml:/etc/loki/loki-config.yml:ro
+      - ./monitoring/loki/loki-config.yml:/etc/loki/loki-config.yml:ro
       - loki-data:/loki
     ports:
       - "3100:3100"
@@ -263,7 +263,7 @@ services:
     volumes:
       - /var/log:/var/log:ro
       - /var/run/docker.sock:/var/run/docker.sock:ro
-      - ./observability/promtail/promtail-config.yml:/etc/promtail/promtail-config.yml:ro
+      - ./monitoring/promtail/promtail-config.yml:/etc/promtail/promtail-config.yml:ro
     depends_on: [loki]
     networks: [cardiocare-net]
     restart: unless-stopped

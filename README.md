@@ -114,6 +114,26 @@ Connect `cardiac.alerts.critical` topic to `cardiocare-alert-handler` via OpenFa
 
 ---
 
+## AI Usage & Transparency
+
+I used AI tools while building this project, the same way I'd use Stack Overflow or the
+official docs — as a helper, not as the one making the decisions. Here's the honest split:
+
+- **AI helped with:** boring boilerplate — Dockerfile syntax, wiring up
+  `docker-compose.yml`, and a first draft of the Rego policy in
+  `security/opa/cardiac_policy.rego`.
+- **I designed and decided:** the overall 8-layer architecture, how the Kafka topics are
+  split up (`docs/architecture.md §2-3`), which detection models to use and why
+  (IsolationForest + clinical rules + XGBoost), how the security roles and access rules
+  work, where encryption happens (at the producer, before anything hits Kafka), and what's
+  in scope vs. out of scope (`docs/LIMITATIONS.md`).
+
+I read, tested, and mostly rewrote anything AI helped generate before it went into the
+project — nothing was used without me understanding exactly what it does and why it's
+right for this system.
+
+---
+
 ## Academic Context
 
 Programme: AI Operations  
