@@ -3,4 +3,6 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 COPY producer.py publish_event.py crypto.py ./
+RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
+USER appuser
 CMD ["python", "-u", "producer.py"]

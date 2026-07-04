@@ -116,6 +116,16 @@ app.add_middleware(
 if ENABLE_TRACING:
     FastAPIInstrumentor.instrument_app(app)
 
+
+@app.middleware("http")
+async def record_api_latency(request, call_next):
+    """Populates api_latency_seconds, which routes only incremented api_requests for."""
+    start = time.perf_counter()
+    response = await call_next(request)
+    api_latency.labels(endpoint=request.url.path).observe(time.perf_counter() - start)
+    return response
+
+
 bearer_scheme = HTTPBearer(auto_error=False)
 
 

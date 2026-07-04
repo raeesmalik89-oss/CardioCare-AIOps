@@ -9,6 +9,8 @@ WORKDIR /home/app
 COPY services/alert-function/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 COPY services/alert-function/handler.py services/alert-function/crypto.py ./
+RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /home/app
+USER appuser
 
 ENV fprocess="python -u handler.py"
 ENV mode="http"

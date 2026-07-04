@@ -251,7 +251,10 @@ def wait_for_kafka(bootstrap_servers: str, retries: int = 30):
                 value_deserializer=decrypt_event,
                 group_id="cardiocare-aiops-engine",
                 auto_offset_reset="latest",
-                enable_auto_commit=True,
+                # Manual commit (see main()'s finally block): auto-commit fires on a
+                # timer and can commit an offset before the event behind it is even
+                # processed, so a crash between those two points silently drops it.
+                enable_auto_commit=False,
             )
             log.info("Kafka connected.")
             return producer, consumer
@@ -361,6 +364,7 @@ def main():
             log.exception("Error processing event: %s", exc)
         finally:
             processing_latency.observe(time.perf_counter() - start)
+            consumer.commit()
 
 
 if __name__ == "__main__":

@@ -11,5 +11,8 @@ Offline benchmark model that validates the live IsolationForest + clinical-rules
 ```bash
 # place mitbih_train.csv / mitbih_test.csv under ./data
 docker build -t cardiocare-ml-trainer services/ml-trainer
-docker run --rm -v "$PWD/data:/data" -v "$PWD/models:/models" cardiocare-ml-trainer
+docker run --rm --user "$(id -u):$(id -g)" \
+  -v "$PWD/data:/data" -v "$PWD/models:/models" cardiocare-ml-trainer
 ```
+The image runs as a non-root user; `--user "$(id -u):$(id -g)"` matches it to your
+host user so it can write to the bind-mounted `./models` directory on native Linux.

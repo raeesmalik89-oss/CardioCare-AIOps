@@ -61,8 +61,8 @@ cat <<URLS
   Grafana dashboards : http://$PUBLIC_IP:3000      (admin / CardioCare@2024)
   Kafka-UI (events)  : http://$PUBLIC_IP:8085
   Jaeger tracing     : http://$PUBLIC_IP:16686
-  Prometheus         : http://$PUBLIC_IP:9090
-  Keycloak (auth)    : http://$PUBLIC_IP:8080      (admin / CardioCare@2024)
+  Prometheus         : http://$PUBLIC_IP:9091
+  Keycloak (auth)    : http://$PUBLIC_IP:8095      (admin / CardioCare@2024)
 
   To fire a live cardiac emergency during the demo:
       ./scripts/demo-trigger.sh
