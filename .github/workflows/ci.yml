@@ -104,7 +104,7 @@ jobs:
           KAFKA_BOOTSTRAP_SERVERS: kafka:29092
           SECRET_KEY: test-secret-key-for-ci
           GRAFANA_PASSWORD: test-grafana-password
-          KEYCLOAK_SECRET: test-keycloak-secret
+          KEYCLOAK_ADMIN_PASSWORD: test-keycloak-password
           EVENT_ENCRYPTION_KEY: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
 
   docker-push:
