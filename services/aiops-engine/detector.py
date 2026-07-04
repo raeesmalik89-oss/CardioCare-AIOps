@@ -333,6 +333,8 @@ def main():
                     "severity": severity,
                     "vitals": vitals,
                     "ward": event.get("ward", "UNKNOWN"),
+                    "bed_number": bed_number,
+                    "news2_score": news2_score,
                     "model": detector_name,
                     "features_used": FEATURES,
                     "ecg_class": CLASS_NAMES.get(xgb_class) if xgb_class is not None else None,
