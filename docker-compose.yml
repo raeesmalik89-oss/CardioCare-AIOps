@@ -224,6 +224,16 @@ services:
       KEYCLOAK_ADMIN: admin
       KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:?Set KEYCLOAK_ADMIN_PASSWORD in .env}
       KC_DB: dev-file
+      # Pin the hostname so Keycloak issues/validates a CONSISTENT token issuer
+      # regardless of whether a request arrives via the external EC2 IP (real
+      # clients) or the internal Docker network name keycloak:8080 (the API's
+      # own validation calls) -- without this, dev-mode's per-request dynamic
+      # hostname detection stamps a different issuer for each path, and tokens
+      # issued externally get rejected when the API validates them internally.
+      KC_HOSTNAME: ${EC2_PUBLIC_IP:-localhost}
+      KC_HOSTNAME_PORT: "8095"
+      KC_HOSTNAME_STRICT_HTTPS: "false"
+      KC_HTTP_ENABLED: "true"
     volumes:
       - ./security/keycloak:/opt/keycloak/data/import
       - keycloak-data:/opt/keycloak/data
