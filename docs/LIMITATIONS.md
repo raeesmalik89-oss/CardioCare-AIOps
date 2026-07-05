@@ -102,5 +102,32 @@ Future improvements include:
 
 ---
 
+## 7. Serverless (OpenFaaS/faasd) — Scope and Limitations
+
+Critical alerting (`cardiocare-alert-handler`) runs on **faasd**, a single-VM,
+non-Kubernetes FaaS runtime, used to demonstrate the serverless/event-triggered pattern
+on a single EC2 host. This is a deliberate scope choice, and it carries the limitations
+any FaaS deployment does:
+
+- **Cold starts.** A scaled-to-zero function has non-zero latency on its first
+  invocation after idling. This was demonstrated directly: forcing the container to zero
+  replicas and re-invoking produced a transient `500` error on the first call, then a
+  clean response once the new container finished starting.
+- **Execution time limits and statelessness.** The handler is a short-lived,
+  stateless request/response unit — it keeps no state between invocations, and anything
+  that needs to persist lives outside the function (Kafka, the log stack).
+- **Portability.** The handler's business logic has no OpenFaaS-specific dependencies
+  and would need no code changes to run on AWS Lambda, Azure Functions, or GCP Cloud
+  Functions. Only the deployment manifest (trigger wiring, scaling config) would need to
+  be re-expressed in that provider's terms.
+- **CE vs Pro autoscaler maturity.** faasd's Community Edition idle-reconciler did not
+  reliably auto-trigger scale-to-zero within the configured window in testing — a known
+  gap versus faasd Pro or Kubernetes-based OpenFaaS. The scale-to-zero configuration
+  itself was verified correct (`com.openfaas.scale.min=0`, `max=5`, `zero=true` via
+  `faas-cli describe`); cold-start behaviour was demonstrated by manually forcing the
+  container to zero and re-invoking, which shows the same underlying mechanism.
+
+---
+
 *These limitations are intentional for an academic prototype and help define the project's
 current scope.*
