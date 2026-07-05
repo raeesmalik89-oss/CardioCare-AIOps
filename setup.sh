@@ -19,6 +19,7 @@ echo "  ╚═══════════════════════
 echo ""
 
 # ── 1. Detect OS & Install Docker ────────────────────────────────────────────
+NEEDS_SESSION_REFRESH=false
 if ! command -v docker &>/dev/null; then
     info "Installing Docker..."
     if [ -f /etc/amazon-linux-release ] || grep -q "Amazon Linux" /etc/os-release 2>/dev/null; then
@@ -32,9 +33,16 @@ if ! command -v docker &>/dev/null; then
         sudo systemctl enable docker
     fi
     sudo usermod -aG docker "$USER"
+    NEEDS_SESSION_REFRESH=true
     success "Docker installed."
 else
     success "Docker already installed: $(docker --version)"
+fi
+
+if ! id -nG "$USER" | grep -qw docker; then
+    sudo usermod -aG docker "$USER"
+    NEEDS_SESSION_REFRESH=true
+    info "Added $USER to the docker group (takes effect after reconnecting)."
 fi
 
 # ── 2. Install Docker Compose v2 ─────────────────────────────────────────────
@@ -55,7 +63,21 @@ if [ ! -f .env ]; then
     info "Created .env from .env.example"
 fi
 
-PUBLIC_IP=$(curl -s --max-time 3 http://169.254.169.254/latest/meta-data/public-ipv4 2>/dev/null || echo "localhost")
+# Prefer ifconfig.me (simple, works regardless of IMDS version). Fall back to IMDSv2
+# (token-based — required on instances that enforce it, e.g. HttpTokens=required).
+PUBLIC_IP=$(curl -s --max-time 3 ifconfig.me 2>/dev/null)
+if [ -z "$PUBLIC_IP" ]; then
+    IMDS_TOKEN=$(curl -s --max-time 3 -X PUT "http://169.254.169.254/latest/api/token" \
+        -H "X-aws-ec2-metadata-token-ttl-seconds: 21600" 2>/dev/null)
+    PUBLIC_IP=$(curl -s --max-time 3 -H "X-aws-ec2-metadata-token: $IMDS_TOKEN" \
+        http://169.254.169.254/latest/meta-data/public-ipv4 2>/dev/null)
+fi
+# Only accept something that actually looks like an IPv4 address — anything else
+# (e.g. an HTML error page from a failed request) would corrupt the sed substitution below.
+if ! echo "$PUBLIC_IP" | grep -qE '^[0-9]{1,3}(\.[0-9]{1,3}){3}$'; then
+    warn "Could not determine public IP automatically — defaulting to 'localhost'. Set EC2_PUBLIC_IP in .env manually."
+    PUBLIC_IP="localhost"
+fi
 sed -i "s/YOUR_EC2_PUBLIC_IP_HERE/$PUBLIC_IP/" .env
 success "EC2 public IP set: $PUBLIC_IP"
 
@@ -70,10 +92,24 @@ sudo sysctl -w vm.max_map_count=262144 2>/dev/null || true
 echo "vm.max_map_count=262144" | sudo tee -a /etc/sysctl.conf >/dev/null 2>&1 || true
 
 # ── 5. Pre-pull images for faster startup ─────────────────────────────────────
-info "Pre-pulling Docker images (this takes ~2 minutes)..."
-docker compose pull --quiet 2>/dev/null || warn "Some images couldn't be pulled in advance — they'll pull on startup."
+if [ "$NEEDS_SESSION_REFRESH" = true ]; then
+    warn "Skipping image pre-pull — the docker group membership just changed and won't"
+    warn "take effect until you reconnect (see the notice below)."
+else
+    info "Pre-pulling Docker images (this takes ~2 minutes)..."
+    docker compose pull --quiet 2>/dev/null || warn "Some images couldn't be pulled in advance — they'll pull on startup."
+fi
 
 # ── 6. Done ───────────────────────────────────────────────────────────────────
+if [ "$NEEDS_SESSION_REFRESH" = true ]; then
+    echo ""
+    echo "  ╔══════════════════════════════════════════════════════════════╗"
+    echo "  ║  IMPORTANT: log out and reconnect (exit + re-SSH) now.       ║"
+    echo "  ║  Your user was just added to the docker group — that only   ║"
+    echo "  ║  takes effect in a NEW session. Running docker commands in  ║"
+    echo "  ║  this shell will fail with 'permission denied' until then.  ║"
+    echo "  ╚══════════════════════════════════════════════════════════════╝"
+fi
 echo ""
 echo "  ╔══════════════════════════════════════════════════════════════╗"
 echo "  ║  Setup complete! Run the platform with:                     ║"
