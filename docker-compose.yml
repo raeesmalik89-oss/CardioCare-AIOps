@@ -253,6 +253,29 @@ services:
       retries: 10
       start_period: 40s
 
+  # ─── Security: Keycloak master-realm SSL fix (one-shot) ───────────────────────
+  # The imported `cardiocare` realm has sslRequired=none (security/keycloak/
+  # cardiocare-realm.json), but Keycloak's built-in `master` realm (used by the
+  # Administration Console) is NOT part of that import and defaults to
+  # sslRequired=external, which blocks the admin console over plain HTTP.
+  # kcadm.sh (bundled in the Keycloak image) patches it live after Keycloak is
+  # healthy, so this doesn't require touching Keycloak's own startup command.
+  keycloak-init:
+    image: quay.io/keycloak/keycloak:22.0
+    container_name: cardiocare-keycloak-init
+    depends_on:
+      keycloak:
+        condition: service_healthy
+    environment:
+      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:?Set KEYCLOAK_ADMIN_PASSWORD in .env}
+    entrypoint: ["/bin/bash", "-c"]
+    command:
+      - |
+        /opt/keycloak/bin/kcadm.sh config credentials --server http://keycloak:8080 --realm master --user admin --password "$$KEYCLOAK_ADMIN_PASSWORD"
+        /opt/keycloak/bin/kcadm.sh update realms/master -s sslRequired=NONE
+        echo 'master realm sslRequired patched to NONE.'
+    networks: [cardiocare-net]
+
   # ─── Security: Open Policy Agent ─────────────────────────────────────────────
   opa:
     image: openpolicyagent/opa:0.58.0

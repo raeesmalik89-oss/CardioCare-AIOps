@@ -11,7 +11,7 @@ The diagram below shows all components of the CardioCare-AIOps platform and how 
 
 ![CardioCare-AIOps 8-Layer System Architecture](images/8-layer-architecture.png)
 
-The same 16 Docker containers, deployed on a single AWS EC2 host via Docker Compose, are grouped into these eight layers:
+The same 17 Docker containers, deployed on a single AWS EC2 host via Docker Compose, are grouped into these eight layers:
 
 **Layer 1 — Data Ingestion & Sources.** The producer service replays real MIT-BIH ECG beats as a live stream across 9 simulated ICU beds at one event per second, together with vital signs (HR, SpO₂, BP, temperature, respiration). A NEWS2 generator computes an early-warning deterioration score (0–20) per reading. In production this layer is replaced by IoT / HL7 FHIR device connectors.
 
@@ -25,13 +25,13 @@ The same 16 Docker containers, deployed on a single AWS EC2 host via Docker Comp
 
 **Layer 6 — API & Service Gateway.** A FastAPI high-performance gateway exposes 7 endpoints — clinical, metrics/analytics, alert-management and patient APIs — giving applications, clinicians and downstream services one unified, OpenTelemetry-traced access point. Traces are exported to Jaeger.
 
-**Layer 7 — Identity, Access & Policy.** Keycloak issues OIDC/JWT tokens for authentication; the JWT is validated on every request; OPA (Open Policy Agent) enforces authorization with default-deny RBAC across the clinical roles (cardiologist, doctor, nurse, analyst). The chain is **fail-closed** — if a security component is unavailable, the API denies access (returns 503) rather than allowing it.
+**Layer 7 — Identity, Access & Policy.** Keycloak issues OIDC/JWT tokens for authentication; the JWT is validated on every request; OPA (Open Policy Agent) enforces authorization with default-deny RBAC across the clinical roles (cardiologist, doctor, nurse, analyst). `keycloak-init` runs once after Keycloak is healthy to patch its built-in master realm for the plain-HTTP demo environment. The chain is **fail-closed** — if a security component is unavailable, the API denies access (returns 503) rather than allowing it.
 
 **Layer 8 — Observability & Telemetry.** Full-stack monitoring: Prometheus (metrics, port 9091 on host), Grafana (5 live dashboards), Loki + Promtail (centralised log aggregation), Jaeger (distributed tracing via OpenTelemetry), plus Kafka Exporter (Kafka metrics) and Kafka UI (topic management). Observability is privacy-conscious — logs and metrics are keyed on `bed_number`, never on patient identity.
 
 > **Why eight layers?** Explicit security and PHI protection, a clear separation of concerns, an event-driven and decoupled core, AI + clinical rules for safer decisions, serverless alerting for fast response, and enterprise-grade observability. The eight-layer view is the same system as the earlier five-layer summary, drawn at a finer granularity — every layer maps to real, running containers.
 
-> **Infrastructure:** AWS EC2 (t3.large), Docker Compose (16 containers), Ubuntu 26.04 LTS, GitHub Actions CI/CD, OWASP ZAP security testing.
+> **Infrastructure:** AWS EC2 (t3.large), Docker Compose (17 containers), Ubuntu 26.04 LTS, GitHub Actions CI/CD, OWASP ZAP security testing.
 
 ---
 

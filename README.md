@@ -41,14 +41,14 @@ Three components run in the hybrid detection engine:
 
 ```
 CardioCare-AIOps/
-├── docker-compose.yml       # orchestrates all 16 containers
+├── docker-compose.yml       # orchestrates all 17 containers
 ├── setup.sh                 # one-command EC2 bootstrap
 ├── services/                # custom application images (5 Dockerfiles)
 │   ├── producer/             # replays MIT-BIH beats, AES-256-GCM encrypts, publishes to Kafka
 │   ├── aiops-engine/          # IsolationForest + XGBoost + clinical rules, Kafka consumer/producer
 │   ├── api/                   # FastAPI gateway — Keycloak JWT auth, OPA RBAC, 7 endpoints
 │   ├── alert-function/        # OpenFaaS handler, fires on cardiac.alerts.critical
-│   └── ml-trainer/            # offline XGBoost training (standalone, not part of the 16-container stack)
+│   └── ml-trainer/            # offline XGBoost training (standalone, not part of the 17-container stack)
 ├── kafka-config/             # topic definitions (topics.yml) and Kafka setup notes
 ├── security/                 # identity and policy configuration
 │   ├── keycloak/              # realm export, roles (cardiologist, doctor, nurse, analyst)
@@ -90,7 +90,7 @@ scp -i your-key.pem mitbih_train.csv mitbih_test.csv ubuntu@<EC2-PUBLIC-IP>:~/Ca
 chmod +x setup.sh
 ./setup.sh
 
-# setup.sh does NOT start the stack itself — start all 16 containers explicitly
+# setup.sh does NOT start the stack itself — start all 17 containers explicitly
 docker compose up -d
 ```
 
