@@ -80,11 +80,13 @@ ssh -i your-key.pem ubuntu@<EC2-PUBLIC-IP>
 # Clone the repo
 git clone https://github.com/raeesmalik89-oss/CardioCare-AIOps.git
 cd CardioCare-AIOps
+mkdir -p data
 
-# Upload MIT-BIH data from local machine (run this on your local machine)
-scp -i your-key.pem mitbih_train.csv mitbih_test.csv ubuntu@<EC2-PUBLIC-IP>:~/data/
+# Upload MIT-BIH data from your LOCAL machine, in a separate terminal
+# (optional — without this the producer falls back to simulated vitals)
+scp -i your-key.pem mitbih_train.csv mitbih_test.csv ubuntu@<EC2-PUBLIC-IP>:~/CardioCare-AIOps/data/
 
-# Start all 16 containers
+# Back on the EC2 shell — start all 16 containers
 chmod +x setup.sh
 ./setup.sh
 ```
@@ -104,13 +106,13 @@ docker compose up -d
 | Service | URL | Purpose |
 |---|---|---|
 | Grafana | `http://<EC2-IP>:3000` | Dashboards — vitals, ML accuracy, alerts |
-| Prometheus | `http://<EC2-IP>:9090` | Metrics and alerting |
+| Prometheus | `http://<EC2-IP>:9091` | Metrics and alerting (9090 is used by faasd's bundled Prometheus) |
 | FastAPI | `http://<EC2-IP>:8000/docs` | REST API with Swagger UI |
 | Jaeger | `http://<EC2-IP>:16686` | Distributed tracing |
-| Keycloak | `http://<EC2-IP>:8080` | Identity and access management |
+| Keycloak | `http://<EC2-IP>:8095` | Identity and access management (8080 is used by the OpenFaaS gateway) |
 | Loki | `http://<EC2-IP>:3100` | Log aggregation |
-| OpenFaaS | `http://<EC2-IP>:8081` | Serverless alert function |
-| Kafka UI | `http://<EC2-IP>:8082` | Kafka topic browser |
+| OpenFaaS | `http://<EC2-IP>:8080` | Serverless alert function gateway |
+| Kafka UI | `http://<EC2-IP>:8085` | Kafka topic browser |
 
 ## Environment Variables
 
