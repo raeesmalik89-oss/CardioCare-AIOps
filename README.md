@@ -86,9 +86,12 @@ mkdir -p data
 # (optional — without this the producer falls back to simulated vitals)
 scp -i your-key.pem mitbih_train.csv mitbih_test.csv ubuntu@<EC2-PUBLIC-IP>:~/CardioCare-AIOps/data/
 
-# Back on the EC2 shell — start all 16 containers
+# Back on the EC2 shell — installs Docker, configures .env, pre-pulls images
 chmod +x setup.sh
 ./setup.sh
+
+# setup.sh does NOT start the stack itself — start all 16 containers explicitly
+docker compose up -d
 ```
 
 ## Getting Started (Local)
