@@ -242,7 +242,10 @@ services:
     networks: [cardiocare-net]
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:8080/health/ready || exit 1"]
+      # The Keycloak 22.0 image (RHEL9 UBI-micro base) ships neither curl nor wget —
+      # verified live: `exec: "curl": executable file not found in $PATH`. bash is
+      # present, so this uses bash's /dev/tcp to send a raw HTTP request instead.
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8080; echo -e \"GET /health/ready HTTP/1.1\\r\\nhost: localhost\\r\\nConnection: close\\r\\n\\r\\n\" >&3; response=$(cat <&3); case \"$response\" in *'\"status\": \"UP\"'*) exit 0 ;; *) exit 1 ;; esac"]
       interval: 15s
       timeout: 5s
       retries: 10
