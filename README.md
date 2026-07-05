@@ -37,6 +37,34 @@ Three components run in the hybrid detection engine:
 - **Clinical Rules** — safety override: SpO₂<85, HR>180/<35, SBP>185/<75 route directly to CRITICAL, taking precedence over both models
 - **XGBoost** — classifies every real ECG beat live into 5 AAMI classes, trained and validated offline on MIT-BIH (97.27% accuracy)
 
+## Repository Structure
+
+```
+CardioCare-AIOps/
+├── docker-compose.yml       # orchestrates all 16 containers
+├── setup.sh                 # one-command EC2 bootstrap
+├── services/                # custom application images (5 Dockerfiles)
+│   ├── producer/             # replays MIT-BIH beats, AES-256-GCM encrypts, publishes to Kafka
+│   ├── aiops-engine/          # IsolationForest + XGBoost + clinical rules, Kafka consumer/producer
+│   ├── api/                   # FastAPI gateway — Keycloak JWT auth, OPA RBAC, 7 endpoints
+│   ├── alert-function/        # OpenFaaS handler, fires on cardiac.alerts.critical
+│   └── ml-trainer/            # offline XGBoost training (standalone, not part of the 16-container stack)
+├── kafka-config/             # topic definitions (topics.yml) and Kafka setup notes
+├── security/                 # identity and policy configuration
+│   ├── keycloak/              # realm export, roles (cardiologist, doctor, nurse, analyst)
+│   └── opa/                   # Rego RBAC policies, default-deny
+├── monitoring/               # observability stack config
+│   ├── grafana/                # dashboards + datasource/provisioning config
+│   ├── prometheus/             # scrape config and alerting rules
+│   ├── loki/                   # log aggregation config
+│   └── promtail/               # log shipping config
+├── openfaas/                 # faasd deployment artifacts (Dockerfile, stack.yml, deploy.sh)
+├── scripts/                  # demo helper scripts
+├── tests/                    # security/API test suite
+├── docs/                     # architecture.md, LIMITATIONS.md
+└── evidence/                 # captured proof (ZAP scan results, live run screenshots)
+```
+
 ## Prerequisites
 
 - Docker 24+ and Docker Compose v2
