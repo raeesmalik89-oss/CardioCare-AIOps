@@ -2,7 +2,7 @@
   "realm": "cardiocare",
   "displayName": "CardioCare-AIOps",
   "enabled": true,
-  "sslRequired": "external",
+  "sslRequired": "none",
   "registrationAllowed": false,
   "loginWithEmailAllowed": true,
   "duplicateEmailsAllowed": false,
