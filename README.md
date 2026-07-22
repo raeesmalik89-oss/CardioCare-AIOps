@@ -173,7 +173,7 @@ Programme: AI Operations
 Institution: Alnafi International College  
 Topic: Serverless Architectures, Event-Driven AIOps, Observability and Security  
 Author: Muhammad Raees  
-Date: June 2026
+Date: July 2026
 
 ---
 
